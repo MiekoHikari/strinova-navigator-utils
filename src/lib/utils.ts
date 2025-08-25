@@ -81,6 +81,23 @@ export function getWeekRange(week: number, year: number): { start: Date; end: Da
 	return { start: startOfWeek, end: endOfWeek };
 }
 
+// Returns ISO week number (1-53)
+export function getISOWeekNumber(date: Date): number {
+	const tmp = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+	// Thursday in current week decides the year.
+	tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+	const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+	const weekNo = Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+	return weekNo;
+}
+
+// Returns ISO week-numbering year for the given date.
+export function getISOWeekYear(date: Date): number {
+	const tmp = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+	tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+	return tmp.getUTCFullYear();
+}
+
 export async function getGuild(guildId: string): Promise<Guild | null> {
 	try {
 		const guild = await container.client.guilds.fetch(guildId);
