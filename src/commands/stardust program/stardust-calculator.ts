@@ -1,4 +1,4 @@
-import { computeWeightedPoints, TIER_PAYOUT, TIER_PROMOTION_THRESHOLDS } from '#lib/stardustTally';
+import { computeWeightedPoints, TIER_PAYOUT } from '#lib/stardustTally';
 import { ApplyOptions } from '@sapphire/decorators';
 import { ChatInputCommand, Command } from '@sapphire/framework';
 import { EmbedBuilder } from 'discord.js';
@@ -21,6 +21,13 @@ export class CalculatorCommand extends Command {
 					opt.setName('mod-actions').setDescription('Moderation actions (BAN/WARN/MUTE/KICK)').setMinValue(0).setMaxValue(10_000)
 				)
 				.addIntegerOption((opt) => opt.setName('cases').setDescription('Approved modmail cases handled').setMinValue(0).setMaxValue(10_000))
+				.addIntegerOption((opt) =>
+					opt
+						.setName('tier')
+						.setDescription('Preview payout for a specific manual tier (0-3). Defaults to show all if omitted.')
+						.setMinValue(0)
+						.setMaxValue(3)
+				)
 		);
 	}
 
@@ -41,11 +48,17 @@ export class CalculatorCommand extends Command {
 			casesHandled
 		});
 
-		// Derive potential tier given only finalized points (stateless projection)
-		let projectedTier = 0;
-		if (totalFinalizedPoints >= TIER_PROMOTION_THRESHOLDS[3]) projectedTier = 3;
-		else if (totalFinalizedPoints >= TIER_PROMOTION_THRESHOLDS[2]) projectedTier = 2;
-		else if (totalFinalizedPoints >= TIER_PROMOTION_THRESHOLDS[1]) projectedTier = 1;
+		// Manual tiers now: optionally preview a specific tier payout or show all
+		const selectedTier = interaction.options.getInteger('tier');
+		let tierFieldValue: string;
+		if (selectedTier !== null) {
+			const t = Math.min(3, Math.max(0, selectedTier)) as 0 | 1 | 2 | 3;
+			tierFieldValue = `${t} (Payout: ${TIER_PAYOUT[t].toLocaleString()})`;
+		} else {
+			tierFieldValue = Object.entries(TIER_PAYOUT)
+				.map(([tier, payout]) => `${tier}: ${payout.toLocaleString()}`)
+				.join(' | ');
+		}
 
 		const embed = new EmbedBuilder()
 			.setTitle('Stardust Calculator')
@@ -74,8 +87,8 @@ export class CalculatorCommand extends Command {
 					inline: false
 				},
 				{
-					name: 'Projected Tier',
-					value: `${projectedTier} (Payout: ${TIER_PAYOUT[projectedTier as 0 | 1 | 2 | 3].toLocaleString()})`,
+					name: selectedTier !== null ? 'Selected Tier' : 'Tier Payouts',
+					value: tierFieldValue,
 					inline: true
 				},
 				{

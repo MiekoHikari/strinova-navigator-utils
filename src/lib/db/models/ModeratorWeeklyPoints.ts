@@ -23,6 +23,14 @@ export interface ModeratorWeeklyPoints {
 	totalWastedPoints: number; // sum wastedPoints across categories
 	details: CategoryPointsDetail[]; // per category breakdown
 	tierAfterWeek: number; // tier (0-3) after applying this week's update
+	// --- Override / Manual adjustment fields ---
+	overrideActive?: boolean; // when true, stardust award should use overrideFinalizedPoints instead of computed totalFinalizedPoints
+	overrideFinalizedPoints?: number; // manually set finalized points (stardusts) for the week
+	overrideRawPoints?: number; // optional manual raw points value (if staff wishes to display different baseline)
+	overrideDetails?: CategoryPointsDetail[]; // optional manual breakdown
+	overrideReason?: string; // free-form reason text
+	overrideAppliedById?: string; // moderator who applied override
+	overrideAppliedAt?: Date; // timestamp override applied
 	createdAt?: Date;
 	updatedAt?: Date;
 }
@@ -53,7 +61,15 @@ const ModeratorWeeklyPointsSchema = new Schema<ModeratorWeeklyPointsDocument>(
 		totalFinalizedPoints: { type: Number, required: true },
 		totalWastedPoints: { type: Number, required: true },
 		details: { type: [CategoryPointsDetailSchema], required: true },
-		tierAfterWeek: { type: Number, required: true }
+		tierAfterWeek: { type: Number, required: true },
+		// Override fields (all optional)
+		overrideActive: { type: Boolean, default: false },
+		overrideFinalizedPoints: { type: Number },
+		overrideRawPoints: { type: Number },
+		overrideDetails: { type: [CategoryPointsDetailSchema] },
+		overrideReason: { type: String },
+		overrideAppliedById: { type: String },
+		overrideAppliedAt: { type: Date }
 	},
 	{ timestamps: true }
 );

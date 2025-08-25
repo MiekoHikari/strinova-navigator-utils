@@ -31,12 +31,10 @@ const WEIGHT_BUDGETS: Record<ActivityWeightClass, number> = {
 	LOW: 0.2 // up to 20%
 };
 
-// Map categories to weight class + point-per-unit conversion & daily caps for automatic categories.
-// rawPoints = units * pointsPerUnit (subject to daily caps for MEDIUM/LOW already applied upstream if implemented)
 const CATEGORY_CONFIG = {
-	modChatMessages: { weightClass: 'LOW' as ActivityWeightClass, pointsPerUnit: 1 },
+	modChatMessages: { weightClass: 'MEDIUM' as ActivityWeightClass, pointsPerUnit: 1 },
 	publicChatMessages: { weightClass: 'LOW' as ActivityWeightClass, pointsPerUnit: 1 },
-	voiceChatMinutes: { weightClass: 'MEDIUM' as ActivityWeightClass, pointsPerUnit: 1 },
+	voiceChatMinutes: { weightClass: 'LOW' as ActivityWeightClass, pointsPerUnit: 1 },
 	modActionsTaken: { weightClass: 'HIGH' as ActivityWeightClass, pointsPerUnit: 25 },
 	casesHandled: { weightClass: 'HIGH' as ActivityWeightClass, pointsPerUnit: 50 }
 };
@@ -49,13 +47,8 @@ export const TIER_PAYOUT = {
 	3: 1800
 } as const;
 
-// Thresholds to move tiers privately based on finalized points (example values) - you can tune.
-// If finalized points >= threshold for higher tier, they climb (max 3). If zero finalized points, they drop.
-export const TIER_PROMOTION_THRESHOLDS = {
-	1: 100, // to move from 0 -> 1
-	2: 250, // 1 -> 2
-	3: 500 // 2 -> 3
-};
+// Deprecated: automatic tier promotions/demotions removed. Tiers are now managed manually.
+// (Historical thresholds retained in git history if needed.)
 
 // --- Core Computation Logic ---
 interface ComputedPointsResult {
@@ -137,13 +130,16 @@ export function computeWeightedPoints(metrics: Omit<IndividualMetrics, 'stardust
 	return { details, totalRawPoints, totalFinalizedPoints, totalWastedPoints, dynamicMaxPossible };
 }
 
+// Manual tier management: no auto promotion/demotion. We only compute and store weekly metrics.
+// If an override is active on the stored weekly doc, we respect overrideFinalizedPoints for stardust payout.
 async function updateTierAndPersist(memberId: string, week: number, year: number, metrics: Omit<IndividualMetrics, 'stardusts'>) {
 	const guildId = envParseString('MainServer_ID');
 	const { details, totalRawPoints, totalFinalizedPoints, totalWastedPoints, dynamicMaxPossible } = computeWeightedPoints(metrics);
 
-	// Fetch or init tier status
+	// Ensure tier status exists (but DO NOT modify automatically)
 	let tierStatus = await ModeratorTierStatusModel.findOne({ guildId, userId: memberId });
 	if (!tierStatus) {
+		// default tier remains 3 unless manually changed elsewhere
 		tierStatus = new ModeratorTierStatusModel({
 			guildId,
 			userId: memberId,
@@ -152,33 +148,29 @@ async function updateTierAndPersist(memberId: string, week: number, year: number
 			lastEvaluatedYear: year,
 			lastEvaluatedWeek: week
 		});
+		await tierStatus.save();
 	}
 
-	// Determine activity for week
-	let { currentTier, weeksInactive } = tierStatus;
-	if (totalFinalizedPoints === 0) {
-		weeksInactive += 1;
-		currentTier = Math.max(0, currentTier - 1); // drop one tier per inactive week
-	} else {
-		weeksInactive = 0; // reset inactivity
-		// Promotion logic: attempt to climb if points meet threshold for higher tier
-		while (currentTier < 3) {
-			const nextTier = (currentTier + 1) as 1 | 2 | 3;
-			const threshold = TIER_PROMOTION_THRESHOLDS[nextTier];
-			if (totalFinalizedPoints >= threshold) {
-				currentTier = nextTier;
-			} else break;
-		}
-	}
-
-	tierStatus.currentTier = currentTier;
-	tierStatus.weeksInactive = weeksInactive;
+	// DO NOT alter tierStatus fields beyond updating last evaluated markers
 	tierStatus.lastEvaluatedYear = year;
 	tierStatus.lastEvaluatedWeek = week;
 	await tierStatus.save();
 
-	// Persist weekly points snapshot
-	await ModeratorWeeklyPointsModel.findOneAndUpdate(
+	// Upsert weekly points snapshot (retain existing override fields if present)
+	const existingWeekly = await ModeratorWeeklyPointsModel.findOne({ guildId, userId: memberId, week, year });
+	const preservedOverride = existingWeekly
+		? {
+				overrideActive: existingWeekly.overrideActive,
+				overrideFinalizedPoints: existingWeekly.overrideFinalizedPoints,
+				overrideRawPoints: existingWeekly.overrideRawPoints,
+				overrideDetails: existingWeekly.overrideDetails,
+				overrideReason: existingWeekly.overrideReason,
+				overrideAppliedById: existingWeekly.overrideAppliedById,
+				overrideAppliedAt: existingWeekly.overrideAppliedAt
+			}
+		: {};
+
+	const weekly = await ModeratorWeeklyPointsModel.findOneAndUpdate(
 		{ guildId, userId: memberId, week, year },
 		{
 			guildId,
@@ -190,15 +182,19 @@ async function updateTierAndPersist(memberId: string, week: number, year: number
 			totalFinalizedPoints,
 			totalWastedPoints,
 			details,
-			tierAfterWeek: currentTier
+			tierAfterWeek: tierStatus.currentTier,
+			...preservedOverride
 		},
 		{ upsert: true, new: true, setDefaultsOnInsert: true }
 	);
 
-	// Stardusts are the finalized (applied) points for the week, independent of tier.
-	// Tier only reflects (in)activity state now.
-	const stardusts = totalFinalizedPoints;
-	return { stardusts, totalFinalizedPoints, currentTier };
+	// Decide stardusts (respect override)
+	let stardusts = totalFinalizedPoints;
+	if (weekly.overrideActive && typeof weekly.overrideFinalizedPoints === 'number') {
+		stardusts = weekly.overrideFinalizedPoints;
+	}
+
+	return { stardusts, totalFinalizedPoints: stardusts, currentTier: tierStatus.currentTier };
 }
 
 async function ensureGuildAndCategories() {
