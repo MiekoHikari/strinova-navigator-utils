@@ -59,7 +59,7 @@ export class StardustReadCommand extends Subcommand {
 	public async panel(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply();
 		const embed = new EmbedBuilder()
-			.setTitle('Stardust Profile Panel')
+			.setTitle('View your collected stardusts!')
 			.setColor(0xfee75c)
 			.setDescription(
 				[

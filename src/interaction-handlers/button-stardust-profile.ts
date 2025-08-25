@@ -49,14 +49,16 @@ export class StardustProfileButtonHandler extends InteractionHandler {
 
 		const embed = new EmbedBuilder()
 			.setTitle(`Stardust Profile — ${interaction.user.username}`)
-			.setColor(active ? 0x2ecc71 : 0x95a5a6)
+			.setColor(active ? '#cc502e' : 0x95a5a6)
+			.setThumbnail(interaction.user.displayAvatarURL({ extension: 'png', size: 1024 }))
 			.addFields(
 				{ name: 'User', value: `${userMention(userId)} (${inlineCode(userId)})`, inline: false },
 				{ name: 'Enrollment', value: active ? 'Active' : 'Inactive', inline: true },
 				{ name: 'Current Tier', value: String(currentTier), inline: true },
 				{ name: 'Recent Weeks', value: lines.join('\n') || 'No data', inline: false }
 			)
-			.setFooter({ text: `Current Week ${currentWeek} ${currentYear}` });
+			.setFooter({ text: `Current Week ${currentWeek} ${currentYear}` })
+			.setTimestamp();
 
 		return interaction.editReply({ embeds: [embed] });
 	}

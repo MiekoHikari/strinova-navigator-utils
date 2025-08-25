@@ -26,17 +26,17 @@ export interface IndividualMetrics {
 
 // Weight class budgets (fractions of max possible)
 const WEIGHT_BUDGETS: Record<ActivityWeightClass, number> = {
-	HIGH: 0.5, // up to 50%
-	MEDIUM: 0.3, // up to 30%
-	LOW: 0.2 // up to 20%
+	HIGH: 0.6, // up to 60%
+	MEDIUM: 0.25, // up to 25%
+	LOW: 0.15 // up to 15%
 };
 
 const CATEGORY_CONFIG = {
 	modChatMessages: { weightClass: 'MEDIUM' as ActivityWeightClass, pointsPerUnit: 1 },
-	publicChatMessages: { weightClass: 'LOW' as ActivityWeightClass, pointsPerUnit: 1 },
-	voiceChatMinutes: { weightClass: 'LOW' as ActivityWeightClass, pointsPerUnit: 1 },
-	modActionsTaken: { weightClass: 'HIGH' as ActivityWeightClass, pointsPerUnit: 25 },
-	casesHandled: { weightClass: 'HIGH' as ActivityWeightClass, pointsPerUnit: 50 }
+	publicChatMessages: { weightClass: 'LOW' as ActivityWeightClass, pointsPerUnit: 0.5 },
+	voiceChatMinutes: { weightClass: 'LOW' as ActivityWeightClass, pointsPerUnit: 0.25 },
+	modActionsTaken: { weightClass: 'HIGH' as ActivityWeightClass, pointsPerUnit: 10 },
+	casesHandled: { weightClass: 'HIGH' as ActivityWeightClass, pointsPerUnit: 20 }
 };
 
 // Tier payout mapping (public facing) - index by tier
