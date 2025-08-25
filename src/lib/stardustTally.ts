@@ -1,0 +1,384 @@
+import { container } from '@sapphire/framework';
+import { envParseString } from '@skyra/env-utilities';
+import { ModerationCaseActionModel, type ModerationActionType } from './db/models/ModerationCaseAction';
+import { ModeratorTierStatusModel } from './db/models/ModeratorTierStatus';
+import { ModeratorWeeklyPointsModel, type ActivityWeightClass, type CategoryPointsDetail } from './db/models/ModeratorWeeklyPoints';
+import { ModmailThreadClosureModel } from './db/models/ModmailThreadClosure';
+import { getChannelsInCategory, getGuild, getWeekRange } from './utils';
+
+export type StatBotSeries = Array<{
+	count: number;
+	unixTimestamp: number;
+}>;
+
+export interface IndividualMetrics {
+	stardusts: number;
+	modChatMessages: number;
+	publicChatMessages: number;
+	voiceChatMinutes: number;
+	modActionsTaken: number;
+	casesHandled: number;
+}
+
+// --- Configuration Section (adjust as needed) ---
+// Dynamic max possible points is now the sum of raw points a moderator produced this week (before weight caps).
+// We retain weight class fractions to derive how much of that dynamic total can count toward finalized points.
+
+// Weight class budgets (fractions of max possible)
+const WEIGHT_BUDGETS: Record<ActivityWeightClass, number> = {
+	HIGH: 0.5, // up to 50%
+	MEDIUM: 0.3, // up to 30%
+	LOW: 0.2 // up to 20%
+};
+
+// Map categories to weight class + point-per-unit conversion & daily caps for automatic categories.
+// rawPoints = units * pointsPerUnit (subject to daily caps for MEDIUM/LOW already applied upstream if implemented)
+const CATEGORY_CONFIG = {
+	modChatMessages: { weightClass: 'LOW' as ActivityWeightClass, pointsPerUnit: 1 },
+	publicChatMessages: { weightClass: 'LOW' as ActivityWeightClass, pointsPerUnit: 1 },
+	voiceChatMinutes: { weightClass: 'MEDIUM' as ActivityWeightClass, pointsPerUnit: 1 },
+	modActionsTaken: { weightClass: 'HIGH' as ActivityWeightClass, pointsPerUnit: 25 },
+	casesHandled: { weightClass: 'HIGH' as ActivityWeightClass, pointsPerUnit: 50 }
+};
+
+// Tier payout mapping (public facing) - index by tier
+export const TIER_PAYOUT = {
+	0: 0,
+	1: 600,
+	2: 1200,
+	3: 1800
+} as const;
+
+// Thresholds to move tiers privately based on finalized points (example values) - you can tune.
+// If finalized points >= threshold for higher tier, they climb (max 3). If zero finalized points, they drop.
+export const TIER_PROMOTION_THRESHOLDS = {
+	1: 100, // to move from 0 -> 1
+	2: 250, // 1 -> 2
+	3: 500 // 2 -> 3
+};
+
+// --- Core Computation Logic ---
+interface ComputedPointsResult {
+	details: CategoryPointsDetail[];
+	totalRawPoints: number;
+	totalFinalizedPoints: number;
+	totalWastedPoints: number;
+}
+
+export function computeWeightedPoints(metrics: Omit<IndividualMetrics, 'stardusts'>): ComputedPointsResult & { dynamicMaxPossible: number } {
+	// First pass: compute raw points per category (no caps yet) to derive dynamic max possible.
+	const categoryEntries: Array<{ key: keyof typeof CATEGORY_CONFIG; amount: number; rawPoints: number; weightClass: ActivityWeightClass }> = [
+		{
+			key: 'modChatMessages',
+			amount: metrics.modChatMessages,
+			rawPoints: metrics.modChatMessages * CATEGORY_CONFIG.modChatMessages.pointsPerUnit,
+			weightClass: CATEGORY_CONFIG.modChatMessages.weightClass
+		},
+		{
+			key: 'publicChatMessages',
+			amount: metrics.publicChatMessages,
+			rawPoints: metrics.publicChatMessages * CATEGORY_CONFIG.publicChatMessages.pointsPerUnit,
+			weightClass: CATEGORY_CONFIG.publicChatMessages.weightClass
+		},
+		{
+			key: 'voiceChatMinutes',
+			amount: metrics.voiceChatMinutes,
+			rawPoints: metrics.voiceChatMinutes * CATEGORY_CONFIG.voiceChatMinutes.pointsPerUnit,
+			weightClass: CATEGORY_CONFIG.voiceChatMinutes.weightClass
+		},
+		{
+			key: 'modActionsTaken',
+			amount: metrics.modActionsTaken,
+			rawPoints: metrics.modActionsTaken * CATEGORY_CONFIG.modActionsTaken.pointsPerUnit,
+			weightClass: CATEGORY_CONFIG.modActionsTaken.weightClass
+		},
+		{
+			key: 'casesHandled',
+			amount: metrics.casesHandled,
+			rawPoints: metrics.casesHandled * CATEGORY_CONFIG.casesHandled.pointsPerUnit,
+			weightClass: CATEGORY_CONFIG.casesHandled.weightClass
+		}
+	];
+
+	const dynamicMaxPossible = categoryEntries.reduce((sum, c) => sum + c.rawPoints, 0); // e.g., 5356 from example
+
+	// Derive budgets per weight class from dynamic max possible
+	const weightBudgetsAbsolute: Record<ActivityWeightClass, number> = {
+		HIGH: dynamicMaxPossible * WEIGHT_BUDGETS.HIGH,
+		MEDIUM: dynamicMaxPossible * WEIGHT_BUDGETS.MEDIUM,
+		LOW: dynamicMaxPossible * WEIGHT_BUDGETS.LOW
+	};
+
+	// Ensure rounding consistency (optional) - keep as float for precision here
+	const details: CategoryPointsDetail[] = [];
+	const spent: Record<ActivityWeightClass, number> = { HIGH: 0, MEDIUM: 0, LOW: 0 };
+
+	for (const entry of categoryEntries) {
+		const budget = weightBudgetsAbsolute[entry.weightClass];
+		const remainingBudget = Math.max(0, budget - spent[entry.weightClass]);
+		const appliedPoints = Math.min(entry.rawPoints, remainingBudget);
+		const wastedPoints = Math.max(0, entry.rawPoints - appliedPoints);
+		spent[entry.weightClass] += appliedPoints;
+		details.push({
+			category: entry.key,
+			weightClass: entry.weightClass,
+			rawAmount: entry.amount,
+			rawPoints: entry.rawPoints,
+			appliedPoints,
+			wastedPoints,
+			bracketBudget: budget
+		});
+	}
+
+	const totalRawPoints = dynamicMaxPossible;
+	const totalFinalizedPoints = details.reduce((a, d) => a + d.appliedPoints, 0);
+	const totalWastedPoints = details.reduce((a, d) => a + d.wastedPoints, 0);
+
+	return { details, totalRawPoints, totalFinalizedPoints, totalWastedPoints, dynamicMaxPossible };
+}
+
+async function updateTierAndPersist(memberId: string, week: number, year: number, metrics: Omit<IndividualMetrics, 'stardusts'>) {
+	const guildId = envParseString('MainServer_ID');
+	const { details, totalRawPoints, totalFinalizedPoints, totalWastedPoints, dynamicMaxPossible } = computeWeightedPoints(metrics);
+
+	// Fetch or init tier status
+	let tierStatus = await ModeratorTierStatusModel.findOne({ guildId, userId: memberId });
+	if (!tierStatus) {
+		tierStatus = new ModeratorTierStatusModel({
+			guildId,
+			userId: memberId,
+			currentTier: 3,
+			weeksInactive: 0,
+			lastEvaluatedYear: year,
+			lastEvaluatedWeek: week
+		});
+	}
+
+	// Determine activity for week
+	let { currentTier, weeksInactive } = tierStatus;
+	if (totalFinalizedPoints === 0) {
+		weeksInactive += 1;
+		currentTier = Math.max(0, currentTier - 1); // drop one tier per inactive week
+	} else {
+		weeksInactive = 0; // reset inactivity
+		// Promotion logic: attempt to climb if points meet threshold for higher tier
+		while (currentTier < 3) {
+			const nextTier = (currentTier + 1) as 1 | 2 | 3;
+			const threshold = TIER_PROMOTION_THRESHOLDS[nextTier];
+			if (totalFinalizedPoints >= threshold) {
+				currentTier = nextTier;
+			} else break;
+		}
+	}
+
+	tierStatus.currentTier = currentTier;
+	tierStatus.weeksInactive = weeksInactive;
+	tierStatus.lastEvaluatedYear = year;
+	tierStatus.lastEvaluatedWeek = week;
+	await tierStatus.save();
+
+	// Persist weekly points snapshot
+	await ModeratorWeeklyPointsModel.findOneAndUpdate(
+		{ guildId, userId: memberId, week, year },
+		{
+			guildId,
+			userId: memberId,
+			week,
+			year,
+			maxPossiblePoints: dynamicMaxPossible,
+			totalRawPoints,
+			totalFinalizedPoints,
+			totalWastedPoints,
+			details,
+			tierAfterWeek: currentTier
+		},
+		{ upsert: true, new: true, setDefaultsOnInsert: true }
+	);
+
+	// Stardusts are the finalized (applied) points for the week, independent of tier.
+	// Tier only reflects (in)activity state now.
+	const stardusts = totalFinalizedPoints;
+	return { stardusts, totalFinalizedPoints, currentTier };
+}
+
+async function ensureGuildAndCategories() {
+	const serverID = envParseString('MainServer_ID');
+	const guild = await getGuild(serverID);
+	if (!guild) throw new Error('Guild not found');
+
+	const modChatChannelIds = await getChannelsInCategory(guild, envParseString('MainServer_ModChatCategoryID'));
+	const modCommandsChannelIds = await getChannelsInCategory(guild, envParseString('MainServer_ModCommandsCategoryID'));
+
+	return { serverID, guild, modChatChannelIds, modCommandsChannelIds };
+}
+
+function appendParamsToUrl(url: string, params: Record<string, unknown>): string {
+	const [path, existingQuery = ''] = url.split('?');
+	const search = new URLSearchParams(existingQuery);
+
+	const append = (key: string, value: unknown) => {
+		if (value === undefined || value === null) return;
+		if (Array.isArray(value)) {
+			for (const v of value) append(key, v);
+		} else {
+			search.append(key, String(value));
+		}
+	};
+
+	for (const [key, value] of Object.entries(params)) {
+		append(key, value);
+	}
+
+	const queryString = search.toString();
+	return queryString ? `${path}?${queryString}` : path;
+}
+
+async function fetchSeries(url: string, params: Record<string, unknown>) {
+	const client = container.statBotClient;
+	if (!client) throw new Error('StatBot client not initialized');
+	const res = await client.get<StatBotSeries>(appendParamsToUrl(url, params));
+	return res.data;
+}
+
+export async function fetchModChatMessageCount(memberId: string, week: number, year: number): Promise<number> {
+	const { start, end } = getWeekRange(week, year);
+	const { serverID, modChatChannelIds } = await ensureGuildAndCategories();
+
+	const data = await fetchSeries(`/guilds/${serverID}/messages/series`, {
+		start: start.getTime(),
+		end: end.getTime(),
+		interval: 'week',
+		'whitelist_members[]': [memberId],
+		'whitelist_channels[]': modChatChannelIds
+	});
+
+	return data.reduce((sum, s) => sum + s.count, 0);
+}
+
+export async function fetchPublicChatMessageCount(memberId: string, week: number, year: number): Promise<number> {
+	const { start, end } = getWeekRange(week, year);
+	const { serverID, modChatChannelIds, modCommandsChannelIds } = await ensureGuildAndCategories();
+
+	const blacklist = [...modChatChannelIds, ...modCommandsChannelIds];
+	const data = await fetchSeries(`/guilds/${serverID}/messages/series`, {
+		start: start.getTime(),
+		end: end.getTime(),
+		interval: 'week',
+		'whitelist_members[]': [memberId],
+		'blacklist_channels[]': blacklist
+	});
+
+	return data.reduce((sum, s) => sum + s.count, 0);
+}
+
+export async function fetchVoiceMinutes(memberId: string, week: number, year: number): Promise<number> {
+	const { start, end } = getWeekRange(week, year);
+	const { serverID, modChatChannelIds, modCommandsChannelIds } = await ensureGuildAndCategories();
+
+	const blacklist = [...modChatChannelIds, ...modCommandsChannelIds];
+	const data = await fetchSeries(`/guilds/${serverID}/voice/series`, {
+		start: start.getTime(),
+		end: end.getTime(),
+		interval: 'week',
+		'whitelist_members[]': [memberId],
+		'blacklist_channels[]': blacklist,
+		'voice_states[]': ['normal']
+	});
+
+	return data.reduce((sum, s) => sum + s.count, 0);
+}
+
+export async function fetchModActions(memberId: string, week: number, year: number): Promise<number> {
+	const guild = await getGuild(envParseString('MainServer_ID'));
+	if (!guild) throw new Error('Guild not found');
+
+	const { start, end } = getWeekRange(week, year);
+
+	const member = await guild.members.fetch(memberId).catch(() => null);
+	if (!member || !member.user) return 0;
+
+	try {
+		const pipeline = [
+			{
+				$match: {
+					guildId: guild.id,
+					performedByUsername: `@${member.user.username}`,
+					performedAt: { $gte: start, $lte: end }
+				}
+			},
+			{ $group: { _id: '$action', count: { $sum: 1 } } }
+		];
+
+		const results: Array<{ _id: ModerationActionType; count: number }> = await ModerationCaseActionModel.aggregate(pipeline);
+
+		const counts: Record<ModerationActionType, number> = {
+			BAN: 0,
+			UNBAN: 0,
+			WARN: 0,
+			MUTE: 0,
+			KICK: 0,
+			UPDATE: 0
+		};
+
+		for (const row of results) {
+			counts[row._id] = row.count;
+		}
+
+		return counts['BAN'] + counts['WARN'] + counts['MUTE'] + counts['KICK'];
+	} catch (error) {
+		container.logger.error('Error fetching audit logs', error);
+		return 0;
+	}
+}
+
+export async function fetchModmailCases(memberId: string, week: number, year: number): Promise<number> {
+	const guild = await getGuild(envParseString('MainServer_ID'));
+	if (!guild) throw new Error('Guild not found');
+
+	const { start, end } = getWeekRange(week, year);
+
+	const member = await guild.members.fetch(memberId).catch(() => null);
+	if (!member || !member.user) return 0;
+
+	try {
+		const count = await ModmailThreadClosureModel.find({
+			guildId: guild.id,
+			approved: true,
+			closedAt: { $gte: start, $lte: end },
+			pointsAwardedToId: memberId
+		});
+
+		console.log(`Modmail cases for ${member.user.tag} (${memberId}) in week ${week} ${year}: ${count.length}`);
+		count.forEach((c) => container.logger.debug(` - ${c.userId} closed at ${c.closedAt.toISOString()} (awarded to ${c.pointsAwardedToId})`));
+
+		return count.length;
+	} catch (error) {
+		container.logger.error('Error fetching modmail cases', error);
+		return 0;
+	}
+}
+
+export async function fetchAllIndividualMetrics(memberId: string, week: number, year: number): Promise<IndividualMetrics> {
+	const [modChatMessages, publicChatMessages, voiceChatMinutes, modActionsTaken, casesHandled] = await Promise.all([
+		fetchModChatMessageCount(memberId, week, year),
+		fetchPublicChatMessageCount(memberId, week, year),
+		fetchVoiceMinutes(memberId, week, year),
+		fetchModActions(memberId, week, year),
+		fetchModmailCases(memberId, week, year)
+	]);
+
+	const { stardusts } = await updateTierAndPersist(memberId, week, year, {
+		modChatMessages,
+		publicChatMessages,
+		voiceChatMinutes,
+		modActionsTaken,
+		casesHandled
+	});
+
+	return { stardusts, modChatMessages, publicChatMessages, voiceChatMinutes, modActionsTaken, casesHandled };
+}
+
+export async function getIndividualReport(memberId: string, week: number, year: number): Promise<IndividualMetrics> {
+	// Centralized function so both the report generator and test-metric use the same fetchers
+	return fetchAllIndividualMetrics(memberId, week, year);
+}
