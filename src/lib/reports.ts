@@ -2,6 +2,7 @@ import { container } from '@sapphire/framework';
 import { envParseString } from '@skyra/env-utilities';
 import { cyan, gray, magenta, yellow } from 'colorette';
 import { AttachmentBuilder, Collection, EmbedBuilder, Guild, GuildMember, TextChannel } from 'discord.js';
+import { BabloPaymentPreferenceModel } from './db/models/BabloPaymentPreference';
 import { EnrolledModeratorModel } from './db/models/EnrolledModerator';
 import { GeneratedReportModel } from './db/models/GeneratedReport';
 import { ModeratorWeeklyPointsModel } from './db/models/ModeratorWeeklyPoints';
@@ -212,6 +213,7 @@ export async function generateMonthlyReport(year: number, month: number): Promis
 	// We'll scan weekly docs in a reasonable range: weeks where week start between first and last day.
 	const firstDay = new Date(year, month - 1, 1);
 	const lastDay = new Date(year, month, 0); // last day previous month
+
 	// Build set of (year, week) pairs to look up by iterating days stepping 7
 	const seen = new Set<string>();
 	for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 7)) {
@@ -228,6 +230,7 @@ export async function generateMonthlyReport(year: number, month: number): Promis
 			return { year: wy, week: wn };
 		})
 	});
+
 	const byUser = new Map<string, { userId: string; total: number }>();
 	for (const w of weeklyDocs) {
 		const val = w.overrideActive && typeof w.overrideFinalizedPoints === 'number' ? w.overrideFinalizedPoints : w.totalFinalizedPoints;
@@ -238,20 +241,75 @@ export async function generateMonthlyReport(year: number, month: number): Promis
 
 	const rows = [...byUser.values()].sort((a, b) => b.total - a.total);
 
-	const embed = new EmbedBuilder()
+	// Fetch Bablo payment preferences to annotate opted-in users with their target UID
+	const babloPrefs = await BabloPaymentPreferenceModel.find({ guildId, optedIn: true }).lean();
+	const babloMap = new Map<string, string>(); // userId -> targetUid
+	for (const p of babloPrefs) babloMap.set(p.userId, p.targetUid);
+
+	const baseEmbed = new EmbedBuilder()
 		.setTitle(`Moderator Monthly Stardust Leaderboard — ${firstDay.toLocaleString('default', { month: 'long' })} ${year}`)
 		.setDescription(`Summed finalized weekly stardusts (incl. overrides) across the month. (Dates in DD-MM-YYYY CST)`)
-		.setColor(0xdaa520)
+		.setColor('#daa520')
 		.setTimestamp(new Date());
 
+	let embeds: EmbedBuilder[] = [baseEmbed];
+
+	// Prepare CSV data (will fill after potential Bablo mapping)
+	const csvHeader = 'Rank,User ID,Bablo UID,Total Finalized Points';
+	const csvRows: string[] = [];
+
 	if (rows.length === 0) {
-		embed.addFields({ name: 'No Data', value: 'No activity recorded.' });
+		baseEmbed.addFields({ name: 'No Data', value: 'No activity recorded.' });
 	} else {
-		const lines = rows.map((r, i) => `**${i + 1}.** <@${r.userId}> — ${format1(r.total)} ⭐`);
-		embed.addFields({ name: 'Leaderboard', value: lines.join('\n').slice(0, 1024) });
+		// Build leaderboard lines with Bablo UID (if opted in)
+		const lines = rows.map((r, i) => {
+			const uid = babloMap.get(r.userId);
+			return `**${i + 1}.** <@${r.userId}>${uid ? ` (${uid})` : ''} — ${format1(r.total)}`;
+		});
+
+		// Populate CSV rows
+		rows.forEach((r, i) => {
+			const uid = babloMap.get(r.userId) || '';
+			csvRows.push([String(i + 1), r.userId, uid.replace(/,/g, ''), format1(r.total)].join(','));
+		});
+
+		// Chunk lines into multiple fields / embeds respecting 1024 char per field & 10 embeds per message limits.
+		const CHUNK_LIMIT = 1024;
+		const chunks: string[] = [];
+		let current = '';
+		for (const line of lines) {
+			// +1 for newline if not first
+			if (current.length + line.length + (current ? 1 : 0) > CHUNK_LIMIT) {
+				chunks.push(current);
+				current = line;
+			} else {
+				current = current ? `${current}\n${line}` : line;
+			}
+		}
+		if (current) chunks.push(current);
+
+		// Discord: max 10 embeds per message. We'll try to keep one field per embed (cleaner formatting)
+		// If more than 10 chunks, merge extras into the 10th.
+		if (chunks.length > 10) {
+			const firstNine = chunks.slice(0, 9);
+			const remainder = chunks.slice(9).join('\n');
+			chunks.length = 0;
+			chunks.push(...firstNine, remainder.slice(0, CHUNK_LIMIT)); // ensure still within limit
+		}
+
+		chunks.forEach((chunk, idx) => {
+			const targetEmbed = idx === 0 ? baseEmbed : new EmbedBuilder().setColor('#daa520');
+			targetEmbed.addFields({ name: idx === 0 ? 'Leaderboard' : 'Leaderboard (cont.)', value: chunk });
+			if (idx !== 0) embeds.push(targetEmbed);
+		});
 	}
 
-	const msg = await channel.send({ embeds: [embed] });
+	// Finalize CSV (always attach, even if empty besides header for consistency)
+	const csvContent = [csvHeader, ...csvRows].join('\n');
+	const monthStr = String(month).padStart(2, '0');
+	const csvAttachment = new AttachmentBuilder(Buffer.from(csvContent), { name: `monthly-report-${year}-${monthStr}.csv` });
+
+	const msg = await channel.send({ embeds, files: [csvAttachment] });
 	await GeneratedReportModel.create({ guildId, type: 'MONTHLY', year, month, channelId, messageId: msg.id });
 	logInfo(`Monthly report posted (message ${msg.id}) for ${year}-${String(month).padStart(2, '0')}.`);
 }
@@ -356,6 +414,7 @@ export async function runCurrentPeriodReports(): Promise<void> {
 		logInfo('No active enrolled moderators; skipping boundary weekly/monthly report generation.');
 		return;
 	}
+
 	const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 	const wy = getISOWeekYear(yesterday);
 	const wn = getISOWeekNumber(yesterday);
