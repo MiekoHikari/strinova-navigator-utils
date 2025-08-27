@@ -50,6 +50,9 @@ importers:
       axios:
         specifier: ^1.11.0
         version: 1.11.0
+      colorette:
+        specifier: ^2.0.20
+        version: 2.0.20
       date-fns:
         specifier: ^4.1.0
         version: 4.1.0
