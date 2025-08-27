@@ -49,8 +49,9 @@ ENV NODE_ENV=production \
 	TZ=UTC
 WORKDIR /app
 
-# (Optional) Install minimal runtime tools (uncomment if curl needed for healthcheck)
-# RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy production node_modules and built sources
 COPY --from=prod-deps /app/node_modules ./node_modules
@@ -61,6 +62,10 @@ COPY package.json ./
 USER node
 
 EXPOSE 4000
+
+# Healthcheck: expects 2xx from /status
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+	CMD curl -fsS http://localhost:4000/status || exit 1
 
 CMD ["node", "dist/index.js"]
 
