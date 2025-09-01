@@ -1,6 +1,8 @@
 import { EnrolledModeratorModel } from '#lib/db/models/EnrolledModerator';
+import { GeneratedReportModel } from '#lib/db/models/GeneratedReport';
 import { ModeratorTierStatusModel } from '#lib/db/models/ModeratorTierStatus';
 import { ModeratorWeeklyPointsModel } from '#lib/db/models/ModeratorWeeklyPoints';
+import { generateMonthlyReport } from '#lib/reports';
 import { getIndividualReport } from '#lib/stardustTally';
 import { getISOWeekNumber, getISOWeekYear, getWeekRange } from '#lib/utils';
 import { ApplyOptions } from '@sapphire/decorators';
@@ -47,10 +49,12 @@ export class StardustReadCommand extends Subcommand {
 				.addSubcommand((s) =>
 					s
 						.setName('monthly')
-						.setDescription('Read a monthly aggregate report (compute on demand).')
-						.addUserOption((o) => o.setName('user').setDescription('Target moderator').setRequired(true))
+						.setDescription('Generate (or force-regenerate) the monthly leaderboard report.')
 						.addIntegerOption((o) => o.setName('month').setDescription('Month (1-12)').setRequired(true).setMinValue(1).setMaxValue(12))
 						.addIntegerOption((o) => o.setName('year').setDescription('Year').setRequired(true).setMinValue(2000).setMaxValue(2100))
+						.addBooleanOption((o) =>
+							o.setName('force').setDescription('Force regeneration & repost even if one already exists').setRequired(false)
+						)
 				)
 		);
 	}
@@ -141,77 +145,38 @@ export class StardustReadCommand extends Subcommand {
 	// /stardust-read monthly
 	public async monthly(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: ['Ephemeral'] });
-		const user = interaction.options.getUser('user', true);
 		const month = interaction.options.getInteger('month', true); // 1-12
 		const year = interaction.options.getInteger('year', true);
+		const force = interaction.options.getBoolean('force') ?? false;
 		const guildId = envParseString('MainServer_ID');
 
-		const weeks = this.collectWeeksForMonth(month, year);
-		if (weeks.length === 0) return interaction.editReply({ content: 'No weeks found for that month.' });
-
-		let totalRaw = 0;
-		let totalFinal = 0;
-		let totalWasted = 0;
-		let maxPossible = 0;
-		const weekLines: string[] = [];
-
-		for (const { week, year: wy } of weeks) {
-			let weekly = await ModeratorWeeklyPointsModel.findOne({ guildId, userId: user.id, week, year: wy });
-			if (!weekly) {
-				await getIndividualReport(user.id, week, wy); // compute on demand
-				weekly = await ModeratorWeeklyPointsModel.findOne({ guildId, userId: user.id, week, year: wy });
+		if (force) {
+			// Remove existing report doc & message to allow fresh regeneration
+			const existing = await GeneratedReportModel.findOne({ guildId, type: 'MONTHLY', year, month });
+			if (existing) {
+				try {
+					const guild = await interaction.client.guilds.fetch(guildId);
+					const channel = await guild.channels.fetch(existing.channelId!).catch(() => null);
+					if (channel && channel.isTextBased() && existing.messageId) {
+						await channel.messages.delete(existing.messageId).catch(() => null);
+					}
+				} catch {
+					// swallow
+				}
+				await GeneratedReportModel.deleteOne({ _id: existing._id });
 			}
-			if (!weekly) continue; // skip if still missing
-			const effective =
-				weekly.overrideActive && typeof weekly.overrideFinalizedPoints === 'number'
-					? weekly.overrideFinalizedPoints
-					: weekly.totalFinalizedPoints;
-			totalRaw += weekly.totalRawPoints;
-			totalFinal += effective;
-			totalWasted += weekly.totalWastedPoints;
-			maxPossible += weekly.maxPossiblePoints;
-			const { start, end } = getWeekRange(week, wy);
-			weekLines.push(
-				`W${week} ${wy}: ${effective.toLocaleString()} (raw ${weekly.totalRawPoints.toLocaleString()}) — ${start.toISOString().slice(5, 10)}→${end.toISOString().slice(5, 10)}`
-			);
-			if (weekLines.length >= 10) weekLines.push('…'); // truncate
 		}
 
-		const embed = new EmbedBuilder()
-			.setTitle(`Monthly Stardust Report — ${user.username}`)
-			.setColor(0x9b59b6)
-			.setDescription(`Month **${month}** / **${year}**`)
-			.addFields(
-				{ name: 'Aggregate Finalized', value: totalFinal.toLocaleString(), inline: true },
-				{ name: 'Aggregate Raw', value: totalRaw.toLocaleString(), inline: true },
-				{ name: 'Aggregate Wasted', value: totalWasted.toLocaleString(), inline: true },
-				{ name: 'Aggregate Dynamic Max', value: maxPossible.toLocaleString(), inline: true },
-				{ name: 'Weeks Included', value: weeks.length.toString(), inline: true }
-			);
-
-		if (weekLines.length) {
-			embed.addFields({ name: 'Weekly Breakdown', value: weekLines.join('\n').slice(0, 1000) });
+		try {
+			await generateMonthlyReport(year, month);
+			return interaction.editReply({
+				content: force
+					? `Forced regeneration complete (or attempted) for ${year}-${String(month).padStart(2, '0')}. New report should now be posted.`
+					: `Monthly report generation triggered for ${year}-${String(month).padStart(2, '0')}. If it didn't already exist, it has now been posted to the configured channel.`
+			});
+		} catch (e) {
+			return interaction.editReply({ content: 'Failed to generate monthly report. Check logs.' });
 		}
-
-		return interaction.editReply({ embeds: [embed] });
-	}
-
-	private collectWeeksForMonth(month: number, year: number): Array<{ week: number; year: number }> {
-		const seen = new Set<string>();
-		const out: Array<{ week: number; year: number }> = [];
-		const date = new Date(year, month - 1, 1);
-		while (date.getMonth() === month - 1) {
-			const w = getISOWeekNumber(date);
-			const wy = getISOWeekYear(date);
-			const key = `${wy}:${w}`;
-			if (!seen.has(key)) {
-				seen.add(key);
-				out.push({ week: w, year: wy });
-			}
-			date.setDate(date.getDate() + 1);
-		}
-		out.sort((a, b) => a.year - b.year || a.week - b.week);
-		return out;
 	}
 
 	private async buildProfileEmbed(userId: string, username: string): Promise<EmbedBuilder> {
