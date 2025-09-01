@@ -114,9 +114,7 @@ export class BabloCommand extends Subcommand {
 	public async list(interaction: Subcommand.ChatInputCommandInteraction) {
 		await interaction.deferReply({ flags: ['Ephemeral'] });
 		if (!interaction.inCachedGuild()) return interaction.editReply({ content: 'Server only.' });
-		const { staffRoleId } = this.getGuildIds();
-		const member = await interaction.guild.members.fetch(interaction.user.id);
-		if (!member.roles.cache.has(staffRoleId)) return interaction.editReply({ content: 'Insufficient permission.' });
+
 		const guildId = interaction.guildId!;
 		const prefs = await BabloPaymentPreferenceModel.find({ guildId, optedIn: true }).lean();
 		if (prefs.length === 0) return interaction.editReply({ content: 'No members are currently opted in.' });
