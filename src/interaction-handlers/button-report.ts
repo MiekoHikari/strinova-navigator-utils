@@ -3,7 +3,7 @@ import { InteractionHandler, InteractionHandlerTypes } from '@sapphire/framework
 import { container } from '@sapphire/framework';
 import type { ButtonInteraction, ModalActionRowComponentBuilder } from 'discord.js';
 import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
-import { PlayerReportModel, PLAYER_REPORT_CATEGORIES } from '#lib/db/models/PlayerReport';
+import { PlayerReportModel } from '#lib/db/models/PlayerReport';
 
 @ApplyOptions<InteractionHandler.Options>({
 	interactionHandlerType: InteractionHandlerTypes.Button
@@ -68,28 +68,26 @@ export class ButtonHandler extends InteractionHandler {
 			return interaction.reply({ content: 'Flow updated. Please start a new report.', ephemeral: true });
 		}
 
-		// Category toggle: action starts with 'cat'
-		if (action === 'cat') {
-			const category = interaction.customId.split(':')[2];
-			if (!PLAYER_REPORT_CATEGORIES.includes(category as any)) {
-				return interaction.reply({ content: 'Unknown category.', ephemeral: true });
-			}
+		// Tag toggle: action starts with 'tag'
+		if (action === 'tag') {
+			const tagId = interaction.customId.split(':')[2];
 			const session = await PlayerReportModel.findOne({ guildId: interaction.guildId, reporterId: interaction.user.id, status: 'IN_PROGRESS' });
 			if (!session) return interaction.reply({ content: 'Session expired. Start again.', ephemeral: true });
-			const has = (session.categories || []).includes(category as any);
+			const has = (session.forumTagIds || []).includes(tagId);
 			await PlayerReportModel.updateOne(
 				{ _id: session._id },
-				has ? { $pull: { categories: category } } : { $addToSet: { categories: category } }
+				has ? { $pull: { forumTagIds: tagId } } : { $addToSet: { forumTagIds: tagId } }
 			);
+			// Provide quick feedback (style change not possible post-hoc without rebuilding original message; ephemeral reply instead)
 			const updated = await PlayerReportModel.findById(session._id).lean();
-			return interaction.reply({ content: `Selected categories: ${(updated?.categories || []).join(', ') || 'None yet'}`, ephemeral: true });
+			return interaction.reply({ content: `Selected tags: ${(updated?.forumTagIds || []).length} selected.`, ephemeral: true });
 		}
 
-		if (action === 'cat-done') {
+		if (action === 'tag-done') {
 			const session = await PlayerReportModel.findOne({ guildId: interaction.guildId, reporterId: interaction.user.id, status: 'IN_PROGRESS' });
 			if (!session) return interaction.reply({ content: 'Session expired. Start again.', ephemeral: true });
-			if (!session.categories || session.categories.length === 0) {
-				return interaction.reply({ content: 'Select at least one category before continuing.', ephemeral: true });
+			if (!session.forumTagIds || session.forumTagIds.length === 0) {
+				return interaction.reply({ content: 'Select at least one tag before continuing.', ephemeral: true });
 			}
 			// Build details modal (match + summary only)
 			const detailsModal = new ModalBuilder().setCustomId('report:details').setTitle('Report - Additional Details');
