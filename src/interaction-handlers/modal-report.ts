@@ -143,9 +143,16 @@ export class ModalHandler extends InteractionHandler {
 			let firstMessageId: string | undefined;
 			
 			try {
+				const allTags = (parentChannel as ForumChannel).availableTags;
+				const tagNames = session.forumTagIds
+					.map(id => allTags.find(t => t.id === id)?.name || id)
+					.filter(Boolean)
+					.join(', ');
+				const matchLine = matchId ? `\nMatch ID: ${matchId}` : '';
+				const tagsLine = tagNames ? `\nTags: ${tagNames}` : '';
 				const thread = await (parentChannel as ForumChannel).threads.create({
 					name: threadName.substring(0, 95),
-					message: { content: `> ${summary}\n\n-# Reported by ${interaction.user.tag} (${interaction.user.id})` },
+					message: { content: `> ${summary}\n-# Reporter: ${interaction.user.tag} (${interaction.user.id})${matchLine}${tagsLine}` },
 					reason: `Player report by ${interaction.user.tag} (${interaction.user.id})`,
 					appliedTags: session.forumTagIds,
 					autoArchiveDuration: 1440,

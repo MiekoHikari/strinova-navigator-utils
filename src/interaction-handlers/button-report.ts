@@ -148,7 +148,8 @@ export class ButtonHandler extends InteractionHandler {
 				.setLabel('Summary / Context')
 				.setStyle(TextInputStyle.Paragraph)
 				.setRequired(true)
-				.setPlaceholder('Describe what happened.');
+				.setPlaceholder('Describe what happened.')
+				.setMinLength(40);
 
 			detailsModal.addComponents(
 				new ActionRowBuilder<ModalActionRowComponentBuilder>().addComponents(matchIdInput),
