@@ -3,7 +3,7 @@ import { InteractionHandler, InteractionHandlerTypes } from '@sapphire/framework
 import { container } from '@sapphire/framework';
 import type { ButtonInteraction, ModalActionRowComponentBuilder } from 'discord.js';
 import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
-import { PlayerReportModel } from '#lib/db/models/PlayerReport';
+import { PlayerReportModel, PLAYER_REPORT_CATEGORIES } from '#lib/db/models/PlayerReport';
 
 @ApplyOptions<InteractionHandler.Options>({
 	interactionHandlerType: InteractionHandlerTypes.Button
@@ -64,16 +64,35 @@ export class ButtonHandler extends InteractionHandler {
 		}
 
 		if (action === 'continue-details') {
+			// Deprecated path (legacy). Encourage restart.
+			return interaction.reply({ content: 'Flow updated. Please start a new report.', ephemeral: true });
+		}
+
+		// Category toggle: action starts with 'cat'
+		if (action === 'cat') {
+			const category = interaction.customId.split(':')[2];
+			if (!PLAYER_REPORT_CATEGORIES.includes(category as any)) {
+				return interaction.reply({ content: 'Unknown category.', ephemeral: true });
+			}
 			const session = await PlayerReportModel.findOne({ guildId: interaction.guildId, reporterId: interaction.user.id, status: 'IN_PROGRESS' });
-			if (!session) return interaction.reply({ content: 'No active session found (it may have expired).', ephemeral: true });
-			// Build details modal
-			const detailsModal = new ModalBuilder().setCustomId('report:details').setTitle('Report - Details');
-			const categoriesInput = new TextInputBuilder()
-				.setCustomId('categories')
-				.setLabel('Categories')
-				.setStyle(TextInputStyle.Short)
-				.setRequired(true)
-				.setPlaceholder('Comma separated (e.g. HACKING, SABOTAGE)');
+			if (!session) return interaction.reply({ content: 'Session expired. Start again.', ephemeral: true });
+			const has = (session.categories || []).includes(category as any);
+			await PlayerReportModel.updateOne(
+				{ _id: session._id },
+				has ? { $pull: { categories: category } } : { $addToSet: { categories: category } }
+			);
+			const updated = await PlayerReportModel.findById(session._id).lean();
+			return interaction.reply({ content: `Selected categories: ${(updated?.categories || []).join(', ') || 'None yet'}`, ephemeral: true });
+		}
+
+		if (action === 'cat-done') {
+			const session = await PlayerReportModel.findOne({ guildId: interaction.guildId, reporterId: interaction.user.id, status: 'IN_PROGRESS' });
+			if (!session) return interaction.reply({ content: 'Session expired. Start again.', ephemeral: true });
+			if (!session.categories || session.categories.length === 0) {
+				return interaction.reply({ content: 'Select at least one category before continuing.', ephemeral: true });
+			}
+			// Build details modal (match + summary only)
+			const detailsModal = new ModalBuilder().setCustomId('report:details').setTitle('Report - Additional Details');
 			const matchIdInput = new TextInputBuilder()
 				.setCustomId('matchId')
 				.setLabel('Match ID (if applicable)')
@@ -86,7 +105,6 @@ export class ButtonHandler extends InteractionHandler {
 				.setRequired(true)
 				.setPlaceholder('Describe what happened.');
 			detailsModal.addComponents(
-				new ActionRowBuilder<ModalActionRowComponentBuilder>().addComponents(categoriesInput),
 				new ActionRowBuilder<ModalActionRowComponentBuilder>().addComponents(matchIdInput),
 				new ActionRowBuilder<ModalActionRowComponentBuilder>().addComponents(summaryInput)
 			);
