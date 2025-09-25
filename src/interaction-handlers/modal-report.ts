@@ -78,6 +78,52 @@ export class ModalHandler extends InteractionHandler {
 			// Update session before creating thread
 			await PlayerReportModel.updateOne({ _id: session._id }, { $set: { matchId: matchId || undefined, summary }, $unset: { expiresAt: 1 } });
 
+			// Duplicate handling: if a report already exists for the same player (prefer playerId over nickname), reuse its thread.
+			let existingReports: any[] = [];
+			if (session.reportedPlayerId) {
+				existingReports = await PlayerReportModel.find({ guildId: interaction.guildId, status: 'SUBMITTED', reportedPlayerId: session.reportedPlayerId }).lean();
+			} else if (session.reportedNickname) {
+				existingReports = await PlayerReportModel.find({ guildId: interaction.guildId, status: 'SUBMITTED', reportedNickname: session.reportedNickname }).lean();
+			}
+
+			if (existingReports.length > 0) {
+				const base = existingReports[0];
+				try {
+					const channel = await interaction.guild!.channels.fetch(base.threadId!).catch(() => null) as any;
+					if (channel?.isThread?.()) {
+						// Fetch original first message
+						let firstMessage: any;
+						if (base.initialThreadMessageId) {
+							try { firstMessage = await channel.messages.fetch(base.initialThreadMessageId); } catch {}
+						}
+						const reporterIds = new Set<string>();
+						for (const r of existingReports) reporterIds.add(r.reporterId);
+						reporterIds.add(interaction.user.id);
+						let embedBuilder = new EmbedBuilder();
+						if (firstMessage?.embeds?.[0]) embedBuilder = EmbedBuilder.from(firstMessage.embeds[0]);
+						const fields: any[] = embedBuilder.data.fields ? [...embedBuilder.data.fields] : [];
+						const reporterFieldIndex = fields.findIndex((f: any) => f.name?.toLowerCase() === 'reporter');
+						const reporterValue = Array.from(reporterIds).map(id => `<@${id}>`).join('\n');
+						if (reporterFieldIndex >= 0) fields[reporterFieldIndex].value = reporterValue; else fields.unshift({ name: 'Reporter', value: reporterValue, inline: true });
+						embedBuilder.setFields(fields).setFooter({ text: `Reports: ${reporterIds.size}` });
+						if (firstMessage) {
+							await firstMessage.edit({ embeds: [embedBuilder] }).catch(() => null);
+						}
+						if (session.forumTagIds?.length && channel.setAppliedTags) {
+							try {
+								const union = Array.from(new Set([...(channel.appliedTags || []), ...session.forumTagIds]));
+								if (union.length !== (channel.appliedTags || []).length) await channel.setAppliedTags(union).catch(() => null);
+							} catch {}
+						}
+						await PlayerReportModel.updateOne({ _id: session._id }, { $set: { status: 'SUBMITTED', threadId: base.threadId, initialThreadMessageId: base.initialThreadMessageId } });
+						await channel.send({ content: `Additional report received from <@${interaction.user.id}> (duplicate). Please provide any new evidence.` }).catch(() => null);
+						return interaction.reply({ content: `This player already has a report thread: <#${base.threadId}>. Your report was added.`, ephemeral: true });
+					}
+				} catch (err) {
+					container.logger.warn('Duplicate report merge failed, proceeding to create new thread.', err);
+				}
+			}
+
 			// Determine forum parent channel
 			const guild = interaction.guild!;
 			let forumChannelId = session.forumChannelId;
@@ -97,16 +143,9 @@ export class ModalHandler extends InteractionHandler {
 			let firstMessageId: string | undefined;
 			
 			try {
-				const embed = new EmbedBuilder()
-					.addFields(
-						{ name: 'Tags', value: session.forumTagIds.map(id => (parentChannel as ForumChannel).availableTags.find(t => t.id === id)?.name || id).join(', ').substring(0, 1024) },
-						...(matchId ? [{ name: 'Match ID', value: matchId, inline: true }] : [])
-					)
-					.setTimestamp(new Date());
-				
 				const thread = await (parentChannel as ForumChannel).threads.create({
 					name: threadName.substring(0, 95),
-					message: { embeds: [embed], content: `# ${targetLabel}\n${summary}` },
+					message: { content: `> ${summary}\n\n-# Reported by ${interaction.user.tag} (${interaction.user.id})` },
 					reason: `Player report by ${interaction.user.tag} (${interaction.user.id})`,
 					appliedTags: session.forumTagIds,
 					autoArchiveDuration: 1440,
