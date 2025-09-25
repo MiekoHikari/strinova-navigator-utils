@@ -2,7 +2,7 @@ import { ApplyOptions } from '@sapphire/decorators';
 import { InteractionHandler, InteractionHandlerTypes } from '@sapphire/framework';
 import { container } from '@sapphire/framework';
 import type { ButtonInteraction, ModalActionRowComponentBuilder } from 'discord.js';
-import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
+import { ActionRowBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ChannelType, ForumChannel } from 'discord.js';
 import { PlayerReportModel } from '#lib/db/models/PlayerReport';
 
 @ApplyOptions<InteractionHandler.Options>({
@@ -74,13 +74,33 @@ export class ButtonHandler extends InteractionHandler {
 			const session = await PlayerReportModel.findOne({ guildId: interaction.guildId, reporterId: interaction.user.id, status: 'IN_PROGRESS' });
 			if (!session) return interaction.reply({ content: 'Session expired. Start again.', ephemeral: true });
 			const has = (session.forumTagIds || []).includes(tagId);
-			await PlayerReportModel.updateOne(
-				{ _id: session._id },
-				has ? { $pull: { forumTagIds: tagId } } : { $addToSet: { forumTagIds: tagId } }
-			);
-			// Provide quick feedback (style change not possible post-hoc without rebuilding original message; ephemeral reply instead)
+			await PlayerReportModel.updateOne({ _id: session._id }, has ? { $pull: { forumTagIds: tagId } } : { $addToSet: { forumTagIds: tagId } });
 			const updated = await PlayerReportModel.findById(session._id).lean();
-			return interaction.reply({ content: `Selected tags: ${(updated?.forumTagIds || []).length} selected.`, ephemeral: true });
+			const forumChannelId = updated?.forumChannelId;
+			const parentChannel = forumChannelId ? interaction.guild!.channels.cache.get(forumChannelId) : null;
+			if (!parentChannel || parentChannel.type !== ChannelType.GuildForum) {
+				return interaction.update({ content: 'Forum context lost. Cancel and restart.', components: [] });
+			}
+			const forum = parentChannel as ForumChannel;
+			const available = forum.availableTags.filter(t => !t.moderated);
+			const selected = new Set(updated?.forumTagIds || []);
+			const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+			for (let i = 0; i < available.length; i += 5) {
+				rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+					...available.slice(i, i + 5).map(tag => new ButtonBuilder()
+						.setCustomId(`report:tag:${tag.id}`)
+						.setLabel(tag.name.slice(0, 20))
+						.setStyle(selected.has(tag.id) ? ButtonStyle.Success : ButtonStyle.Secondary))
+				));
+			}
+			rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+				new ButtonBuilder().setCustomId('report:tag-done').setLabel('Done').setStyle(ButtonStyle.Primary).setDisabled(selected.size === 0),
+				new ButtonBuilder().setCustomId('report:cancel').setLabel('Cancel').setStyle(ButtonStyle.Danger)
+			));
+			return interaction.update({
+				content: `Select tags (selected: ${selected.size}). Press Done when finished.`,
+				components: rows
+			});
 		}
 
 		if (action === 'tag-done') {

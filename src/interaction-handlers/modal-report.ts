@@ -98,10 +98,7 @@ export class ModalHandler extends InteractionHandler {
 			
 			try {
 				const embed = new EmbedBuilder()
-					.setDescription(summary)
 					.addFields(
-						{ name: 'Reporter', value: `<@${interaction.user.id}>`, inline: true },
-						{ name: 'Reported', value: targetLabel, inline: true },
 						{ name: 'Tags', value: session.forumTagIds.map(id => (parentChannel as ForumChannel).availableTags.find(t => t.id === id)?.name || id).join(', ').substring(0, 1024) },
 						...(matchId ? [{ name: 'Match ID', value: matchId, inline: true }] : [])
 					)
@@ -109,9 +106,15 @@ export class ModalHandler extends InteractionHandler {
 				
 				const thread = await (parentChannel as ForumChannel).threads.create({
 					name: threadName.substring(0, 95),
-					message: { embeds: [embed], content: `# ${targetLabel}` },
+					message: { embeds: [embed], content: `# ${targetLabel}\n${summary}` },
 					reason: `Player report by ${interaction.user.tag} (${interaction.user.id})`,
-					appliedTags: session.forumTagIds
+					appliedTags: session.forumTagIds,
+					autoArchiveDuration: 1440,
+					rateLimitPerUser: 15
+				});
+
+				await thread.send({
+					content: `${interaction.user}, thank you for your report. Please provide any evidence (screenshots, videos, etc.) in this thread to help us investigate the issue. Our team will review the information and take appropriate action as needed.`
 				});
 
 				createdThreadId = thread.id;
