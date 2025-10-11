@@ -111,9 +111,11 @@ export class UserCommand extends Command {
 
 			const selectedMessages = Array.from(pickedByAuthor.values());
 			return interaction.editReply(
-				`Pulled ${selectedMessages.length} user(s) from ${filteredMessages.length} filtered message(s):\n` +
-					selectedMessages.map((m) => `- ${m.author.tag} — ${m.url}`).join('\n')
-			);
+			`Pulled ${selectedMessages.length} user(s) from ${filteredMessages.length} filtered message(s):\n` +
+			"```" +
+				selectedMessages.map((m) => `- ${m.author.username} — ${m.author.id} - ${m.url}`).join('\n') +
+			"```"
+		);
 		}
 
 		// Not unique: select random messages directly (users may repeat)
