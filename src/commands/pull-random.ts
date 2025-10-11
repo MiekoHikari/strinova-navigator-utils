@@ -125,7 +125,9 @@ export class UserCommand extends Command {
 		const selectedMessages = shuffledMessages.slice(0, amount);
 		return interaction.editReply(
 			`Pulled ${selectedMessages.length} user(s) from ${filteredMessages.length} filtered message(s):\n` +
-				selectedMessages.map((m) => `- ${m.author.tag} — ${m.url}`).join('\n')
+			"```" +
+				selectedMessages.map((m) => `- ${m.author.username} — ${m.author.id} - ${m.url}`).join('\n') +
+			"```"
 		);
 	}
 }
