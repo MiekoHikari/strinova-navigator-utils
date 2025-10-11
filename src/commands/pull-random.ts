@@ -26,6 +26,26 @@ export class UserCommand extends Command {
 						.setDescription('Whether to pull unique users only')
 						.setRequired(false)
 				)
+				.addBooleanOption((option) =>
+					option //
+						.setName('requires_attachment')
+						.setDescription('Only consider messages that contain at least one attachment')
+						.setRequired(false)
+				)
+				.addIntegerOption((option) =>
+					option //
+						.setName('min_characters')
+						.setDescription('Only consider messages with at least this many characters')
+						.setMinValue(1)
+						.setMaxValue(4000)
+						.setRequired(false)
+				)
+				.addBooleanOption((option) =>
+					option //
+						.setName('exclude_bots')
+						.setDescription('Exclude bot-authored messages from consideration')
+						.setRequired(false)
+				)
 		);
 	}
 
@@ -34,6 +54,9 @@ export class UserCommand extends Command {
 
 		const amount = interaction.options.getInteger('amount', true);
 		const unique = interaction.options.getBoolean('unique') ?? false;
+		const requiresAttachment = interaction.options.getBoolean('requires_attachment') ?? false;
+		const minCharacters = interaction.options.getInteger('min_characters') ?? undefined;
+		const excludeBots = interaction.options.getBoolean('exclude_bots') ?? false;
 
 		const channel = interaction.channel;
 		if (!channel || !channel.isTextBased()) {
@@ -58,24 +81,51 @@ export class UserCommand extends Command {
 			return interaction.editReply('No messages found in this channel.');
 		}
 
-		let users = allMessages.map((msg) => msg.author);
+		// Apply filters
+		let filteredMessages = allMessages.slice();
+		if (excludeBots) filteredMessages = filteredMessages.filter((m) => !m.author.bot);
+		if (requiresAttachment) filteredMessages = filteredMessages.filter((m) => m.attachments.size > 0);
+		if (typeof minCharacters === 'number') filteredMessages = filteredMessages.filter((m) => m.content.trim().length >= minCharacters);
+
+		if (filteredMessages.length === 0) {
+			return interaction.editReply('No messages matched the provided filters.');
+		}
+
+		// When unique is requested, ensure we only select distinct authors, and keep
+		// the message that caused their selection so we can return its link.
 		if (unique) {
-			users = Array.from(new Set(users.map((user) => user.id))).map((id) => users.find((user) => user.id === id)!);
+			const uniqueAuthorCount = new Set(filteredMessages.map((m) => m.author.id)).size;
+			if (amount > uniqueAuthorCount) {
+				return interaction.editReply(`There are only ${uniqueAuthorCount} unique users matching the filters in this channel.`);
+			}
+
+			// Shuffle messages and walk until we have the desired number of distinct authors
+			const shuffledMessages = filteredMessages.slice().sort(() => Math.random() - 0.5);
+			const pickedByAuthor = new Map<string, Message>();
+			for (const msg of shuffledMessages) {
+				if (!pickedByAuthor.has(msg.author.id)) {
+					pickedByAuthor.set(msg.author.id, msg);
+					if (pickedByAuthor.size === amount) break;
+				}
+			}
+
+			const selectedMessages = Array.from(pickedByAuthor.values());
+			return interaction.editReply(
+				`Pulled ${selectedMessages.length} user(s) from ${filteredMessages.length} filtered message(s):\n` +
+					selectedMessages.map((m) => `- ${m.author.tag} — ${m.url}`).join('\n')
+			);
 		}
 
-		if (users.length === 0) {
-			return interaction.editReply('No users found in this channel.');
+		// Not unique: select random messages directly (users may repeat)
+		if (amount > filteredMessages.length) {
+			return interaction.editReply(`There are only ${filteredMessages.length} messages available after applying filters in this channel.`);
 		}
 
-		if (amount > users.length) {
-			return interaction.editReply(`There are only ${users.length} unique users in this channel.`);
-		}
-
-		const shuffled = users.sort(() => 0.5 - Math.random());
-		const selected = shuffled.slice(0, amount);
-
+		const shuffledMessages = filteredMessages.slice().sort(() => Math.random() - 0.5);
+		const selectedMessages = shuffledMessages.slice(0, amount);
 		return interaction.editReply(
-			`Pulled ${selected.length} user(s):\n${selected.map((user) => `- ${user.tag} (${user.id})`).join('\n')}`
+			`Pulled ${selectedMessages.length} user(s) from ${filteredMessages.length} filtered message(s):\n` +
+				selectedMessages.map((m) => `- ${m.author.tag} — ${m.url}`).join('\n')
 		);
 	}
 }
