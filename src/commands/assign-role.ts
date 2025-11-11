@@ -19,12 +19,6 @@ export class UserCommand extends Command {
 						.setDescription('The CSV file containing user data')
 						.setRequired(true)
 				)
-				.addStringOption((option) =>
-					option //
-						.setName('column')
-						.setDescription('The column name where user IDs or usernames are located')
-						.setRequired(false)
-				)
 				.addRoleOption((option) =>
 					option //
 						.setName('role')
@@ -37,6 +31,12 @@ export class UserCommand extends Command {
 						.setDescription('The type of identifier used in the spreadsheet (e.g., user ID, username)')
 						.setRequired(true)
 						.addChoices({ name: 'User ID', value: 'user_id' }, { name: 'Username', value: 'username' })
+				)
+				.addStringOption((option) =>
+					option //
+						.setName('column')
+						.setDescription('The column name where user IDs or usernames are located')
+						.setRequired(false)
 				)
 		);
 	}
