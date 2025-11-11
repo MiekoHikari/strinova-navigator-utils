@@ -231,7 +231,7 @@ export class UserCommand extends Command {
 					new ButtonBuilder().setCustomId(`assign_cancel_${uid}`).setLabel('Cancel').setStyle(ButtonStyle.Secondary)
 				)
 			],
-			files: [unassignedAttachment]
+			files: unassignedUsers.length > 0 ? [unassignedAttachment] : []
 		});
 
 		const filter = (i: any) => i.user.id === interaction.user.id && i.customId.endsWith(`${uid}`);
