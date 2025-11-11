@@ -15,7 +15,7 @@ export class UserCommand extends Command {
 				.setDescription(this.description)
 				.addAttachmentOption((option) =>
 					option //
-						.setName('csv_file')
+						.setName('csv-file')
 						.setDescription('The CSV file containing user data')
 						.setRequired(true)
 				)
@@ -33,7 +33,7 @@ export class UserCommand extends Command {
 				)
 				.addStringOption((option) =>
 					option //
-						.setName('id_type')
+						.setName('id-type')
 						.setDescription('The type of identifier used in the spreadsheet (e.g., user ID, username)')
 						.setRequired(true)
 						.addChoices({ name: 'User ID', value: 'user_id' }, { name: 'Username', value: 'username' })
@@ -45,10 +45,10 @@ export class UserCommand extends Command {
 		await interaction.deferReply();
 
 		// Parse all options
-		const csvFile = interaction.options.getAttachment('csv_file', true);
+		const csvFile = interaction.options.getAttachment('csv-file', true);
 		const column = interaction.options.getString('column', true);
 		const role = interaction.options.getRole('role', true);
-		const idType = interaction.options.getString('id_type', true);
+		const idType = interaction.options.getString('id-type', true);
 
 		const users = this.parseCSVColumn(csvFile, column);
 
