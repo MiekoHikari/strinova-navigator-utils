@@ -2,6 +2,7 @@ import { ApplyOptions } from '@sapphire/decorators';
 import { Command } from '@sapphire/framework';
 import { ActionRowBuilder, Attachment, AttachmentBuilder, ButtonBuilder, ButtonStyle, GuildMember, MessageActionRowComponentBuilder } from 'discord.js';
 import { parse } from 'csv-parse/sync';
+import axios from 'axios';
 
 @ApplyOptions<Command.Options>({
 	description: 'Assign a role to multiple users from a spreadsheet',
@@ -50,7 +51,7 @@ export class UserCommand extends Command {
 		const role = interaction.options.getRole('role', true);
 		const idType = interaction.options.getString('id-type', true);
 
-		const users = this.parseCSVColumn(csvFile, column);
+		const users = await this.parseCSVColumn(csvFile, column);
 
 		const confirmation = await this.columnConfirmation(interaction, role.name, users);
 		if (!confirmation) return;
@@ -91,10 +92,12 @@ export class UserCommand extends Command {
 		});
 	}
 
-	private parseCSVColumn(attachment: Attachment, column?: string | null): string[] {
+	private async parseCSVColumn(attachment: Attachment, column?: string | null): Promise<string[]> {
 		const hasColumn = Boolean(column);
 
-		const records = parse(attachment.url, { columns: hasColumn, skip_empty_lines: true });
+		const file = await axios.get(attachment.url);
+
+		const records = parse(file.data, { columns: hasColumn, skip_empty_lines: true });
 
 		if (column) {
 			return records.map((record: any) => record[column]).filter((value: string) => value);
