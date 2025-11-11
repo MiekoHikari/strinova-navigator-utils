@@ -154,32 +154,44 @@ export class UserCommand extends Command {
 		const assignable: GuildMember[] = [];
 		const unassignable: {user: string, reason: string}[] = [];
 
-		users.forEach(async user => {
+		for (const rawUser of users) {
+			const user = rawUser.trim();
 			let guildMember: GuildMember | null = null;
-			
+			const guild = interaction.guild;
+			if (!guild) {
+				unassignable.push({ user, reason: 'No guild context' });
+				continue;
+			}
+
 			// Convert username to ID if necessary
 			if (idType === 'username') {
 				const lookup = await this.lookupUsername(interaction, user);
 				if (!lookup) {
 					unassignable.push({ user, reason: 'Username could not be matched' });
-					return;
+					continue;
 				} else {
 					guildMember = lookup;
 				}
 			}
 
 			// Check if user is banned
-			const isBanned = Boolean(await interaction.guild?.bans.fetch(guildMember ? guildMember.id : user).catch(() => null));
-			
+			let isBanned = false;
+			try {
+				const fetchId = guildMember ? guildMember.id : user;
+				const ban = await guild.bans.fetch(fetchId).catch(() => null);
+				isBanned = Boolean(ban);
+			} catch {
+				isBanned = false;
+			}
+
 			if (isBanned) {
 				unassignable.push({ user, reason: 'User is banned from the server' });
-				return;
+				continue;
 			}
 
 			// Fetch guild member
 			try {
-				guildMember = guildMember || await interaction.guild?.members.fetch(user) || null;
-				
+				guildMember = guildMember || (await guild.members.fetch(user).catch(() => null));
 				if (guildMember) {
 					assignable.push(guildMember);
 				} else {
@@ -188,7 +200,7 @@ export class UserCommand extends Command {
 			} catch {
 				unassignable.push({ user, reason: 'User not found in the server' });
 			}
-		})
+		}
 
 		return { assignable, unassignable };
 	}
