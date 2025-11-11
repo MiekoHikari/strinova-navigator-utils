@@ -66,15 +66,15 @@ export class UserCommand extends Command {
 			reason: string;
 		}[] = [];
 
-		// Assign role to all assignable users
-		assignable.forEach(async (member) => {
+		for (const member of assignable) {
 			try {
 				await member.roles.add(role.id);
 			} catch (error) {
 				console.error(`Failed to assign role to ${member.user.tag}:`, error);
 				failed.push({ user: member.user.tag, reason: (error as Error).message });
 			}
-		})
+		}
+
 
 		// Final report
 		const successCount = assignable.length - failed.length;
@@ -146,7 +146,7 @@ export class UserCommand extends Command {
 			return false;
 		}
 
-		await collected.update({ content: 'Operation confirmed. Proceeding...', components: [] });
+		await collected.update({ content: 'Operation confirmed. Proceeding...\nThis may take a while... Please check back regularly for updates.', components: [] });
 		return true;
 	}
 
@@ -217,7 +217,7 @@ export class UserCommand extends Command {
 		// Ask for confirmation before proceeding
 		const uid = Date.now();
 
-		const confirmationMessage = `${assignedUsers.length} users will be assigned the role **${roleName}**.\n${unassignedUsers.length} users could not be assigned the role. Proceed?`;
+		const confirmationMessage = `${interaction.user}\n${assignedUsers.length} users will be assigned the role **${roleName}**.\n${unassignedUsers.length} users could not be assigned the role. Proceed?`;
 		
 		// Convert unassigned users to csv for attachment
 		const unassignedCsv = [ 'User,Reason', ...unassignedUsers.map(u => `${u.user},${u.reason}`)].join('\n');
@@ -236,7 +236,7 @@ export class UserCommand extends Command {
 
 		const filter = (i: any) => i.user.id === interaction.user.id && i.customId.endsWith(`${uid}`);
 
-		const collected = await confirmationInteraction.awaitMessageComponent({ filter, time: 60000 });
+		const collected = await confirmationInteraction.awaitMessageComponent({ filter, time: 24 * 60 * 60 * 1000 });
 
 		if (collected.customId === `assign_cancel_${uid}`) {
 			await collected.update({ content: 'Role assignment cancelled.', components: [] });
