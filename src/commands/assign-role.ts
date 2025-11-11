@@ -46,7 +46,7 @@ export class UserCommand extends Command {
 
 		// Parse all options
 		const csvFile = interaction.options.getAttachment('csv-file', true);
-		const column = interaction.options.getString('column', true);
+		const column = interaction.options.getString('column');
 		const role = interaction.options.getRole('role', true);
 		const idType = interaction.options.getString('id-type', true);
 
@@ -91,7 +91,7 @@ export class UserCommand extends Command {
 		});
 	}
 
-	private parseCSVColumn(attachment: Attachment, column?: string): string[] {
+	private parseCSVColumn(attachment: Attachment, column?: string | null): string[] {
 		const hasColumn = Boolean(column);
 
 		const records = parse(attachment.url, { columns: hasColumn, skip_empty_lines: true });
