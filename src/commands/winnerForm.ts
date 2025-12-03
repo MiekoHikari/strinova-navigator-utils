@@ -22,9 +22,9 @@ export class UserCommand extends Command {
 		if (!interaction.channel?.isSendable) return;
 
 		const embed = new EmbedBuilder()
-			.setDescription(`# **Congratulations to the winners of ${eventName}!** 🎉\n\nPlease fill out the form below to claim your prize.`)
+			.setDescription(`### **Congratulations to the winners of ${eventName}** 🎉\n\nPlease fill out the form below to claim your prize.`)
 			.setTimestamp()
-			.setColor('Random');
+			.setColor('Blurple');
 
 		const row = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
 			new ButtonBuilder()
