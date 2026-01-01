@@ -4,7 +4,7 @@ import './lib/setup';
 
 import { container, LogLevel, SapphireClient } from '@sapphire/framework';
 import { IntentsBitField, Partials } from 'discord.js';
-import mongoose from 'mongoose';
+import { prisma } from './lib/prisma';
 
 const client = new SapphireClient({
 	logger: {
@@ -27,20 +27,13 @@ const main = async () => {
 		container.statBotClient = statBotClient;
 
 		// Connect to Database
-		await mongoose
-			.connect(envParseString('Mongo_URI'), {
-				maxPoolSize: 10,
-				serverSelectionTimeoutMS: 5000,
-				socketTimeoutMS: 45000,
-				family: 4
-			})
-			.then(() => {
-				client.logger.info('Connected to MongoDB');
-			})
-			.catch((error) => {
-				client.logger.fatal('Failed to connect to MongoDB', error);
-				process.exit(1);
-			});
+		try {
+			await prisma.$connect();
+			client.logger.info('Connected to SQLite via Prisma');
+		} catch (error) {
+			client.logger.fatal('Failed to connect to Database', error);
+			process.exit(1);
+		}
 
 		client.logger.info('Logging in');
 		await client.login();

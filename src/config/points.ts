@@ -1,10 +1,3 @@
-import { join } from 'path';
-
-export const rootDir = join(__dirname, '..', '..');
-export const srcDir = join(rootDir, 'src');
-
-export const RandomLoadingMessage = ['Computing...', 'Thinking...', 'Cooking some food', 'Give me a moment', 'Loading...'];
-
 export type ActivityWeightClass = 'HIGH' | 'MEDIUM' | 'LOW';
 
 // Weight class budgets (fractions of max possible)
@@ -29,3 +22,12 @@ export const TIER_PAYOUT = {
 	2: 1200,
 	3: 1800
 } as const;
+
+export interface IndividualMetrics {
+	stardusts: number;
+	modChatMessages: number;
+	publicChatMessages: number;
+	voiceChatMinutes: number;
+	modActionsTaken: number;
+	casesHandled: number;
+}

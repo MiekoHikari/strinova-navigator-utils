@@ -6,7 +6,7 @@
 		"baseUrl": "src",
 		"tsBuildInfoFile": "dist/.tsbuildinfo",
 		"paths": {
-			"#lib/*": ["./lib/*"]
+			"#lib/*": ["./lib/*"],
 		}
 	},
 	"include": ["src"]

@@ -1,0 +1,126 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "sqlite"
+}
+
+// Central User table. 
+// We store the Discord ID as the primary key to avoid duplication.
+model User {
+    id        String   @id // Discord User ID
+    username  String? // Cached username for display
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    // Relations
+    moderatorProfile ModeratorProfile?
+    playerReports    PlayerReport[]
+}
+
+// Only users who are enrolled as moderators get this profile.
+model ModeratorProfile {
+    id     String @id @default(uuid())
+    userId String @unique
+    user   User   @relation(fields: [userId], references: [id])
+
+    enrolledAt DateTime @default(now())
+    active     Boolean  @default(true)
+
+    // Relations
+    weeklyStats WeeklyStat[]
+    modActions  ModAction[]
+}
+
+// Replaces 'ModeratorWeeklyPoints'
+model WeeklyStat {
+    id String @id @default(uuid())
+
+    moderatorId String
+    moderator   ModeratorProfile @relation(fields: [moderatorId], references: [id])
+
+    year Int
+    week Int
+
+    // Raw Metrics (The actual work done)
+    modChatMessages    Int @default(0)
+    publicChatMessages Int @default(0)
+    voiceChatMinutes   Int @default(0)
+    modActionsCount    Int @default(0)
+    casesHandledCount  Int @default(0)
+
+    // Calculated Results (Can be re-calculated, but good to store for history)
+    totalPoints Float
+    tier        Int   @default(0)
+
+    // Overrides (If an admin manually changes the score)
+    isOverridden   Boolean @default(false)
+    overridePoints Float?
+    overrideReason String?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([moderatorId, year, week]) // Prevent duplicate reports for the same week
+}
+
+// Replaces 'ModerationCaseAction'
+model ModAction {
+    id String @id @default(uuid())
+
+    // If we can link it to a moderator, we do. 
+    // If it was parsed from an embed without an ID, this might be null.
+    moderatorId String?
+    moderator   ModeratorProfile? @relation(fields: [moderatorId], references: [id])
+
+    // Fallback if we only have the username from an embed
+    performedByUsername String?
+
+    caseId String // The alphanumeric case ID (e.g. "A1B2")
+    action String // BAN, WARN, MUTE, etc.
+
+    channelId String
+    messageId String @unique
+
+    performedAt DateTime
+
+    createdAt DateTime @default(now())
+}
+
+// Replaces 'PlayerReport'
+model PlayerReport {
+    id String @id @default(uuid())
+
+    reporterId String
+    reporter   User   @relation(fields: [reporterId], references: [id])
+
+    guildId          String
+    reportedPlayerId String?
+    reportedNickname String?
+    matchId          String?
+    summary          String?
+
+    status String // IN_PROGRESS, SUBMITTED, etc.
+
+    // Thread info
+    threadId String?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model ModmailThreadClosure {
+    id                String   @id @default(uuid())
+    guildId           String
+    threadId          String   @unique
+    userId            String
+    closedByUserId    String
+    pointsAwardedToId String?
+    approved          Boolean  @default(false)
+    closedAt          DateTime
+    createdAt         DateTime @default(now())
+}

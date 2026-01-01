@@ -44,6 +44,5 @@ declare module '@skyra/env-utilities' {
 		MainServer_WeeklyReportChannelID: string;
 		MainServer_MonthlyReportChannelID: string;
 		Statbot_Key: string;
-		Mongo_URI: string;
 	}
 }

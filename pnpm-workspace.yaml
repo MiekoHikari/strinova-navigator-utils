@@ -1,3 +1,5 @@
 onlyBuiltDependencies:
+  - '@prisma/engines'
   - '@sapphire/type'
   - '@swc/core'
+  - prisma
