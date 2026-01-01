@@ -31,10 +31,12 @@ model ModeratorProfile {
 
     enrolledAt DateTime @default(now())
     active     Boolean  @default(true)
+    tier       Int      @default(0)
 
     // Relations
-    weeklyStats WeeklyStat[]
-    modActions  ModAction[]
+    weeklyStats  WeeklyStat[]
+    monthlyStats MonthlyStat[]
+    modActions   ModAction[]
 }
 
 // Replaces 'ModeratorWeeklyPoints'
@@ -56,7 +58,7 @@ model WeeklyStat {
 
     // Calculated Results (Can be re-calculated, but good to store for history)
     totalPoints Float
-    tier        Int   @default(0)
+    rawPoints   Float
 
     // Overrides (If an admin manually changes the score)
     isOverridden   Boolean @default(false)
@@ -67,6 +69,30 @@ model WeeklyStat {
     updatedAt DateTime @updatedAt
 
     @@unique([moderatorId, year, week]) // Prevent duplicate reports for the same week
+}
+
+model MonthlyStat {
+    id String @id @default(uuid())
+
+    moderatorId String
+    moderator   ModeratorProfile @relation(fields: [moderatorId], references: [id])
+
+    year  Int
+    month Int
+
+    modChatMessages    Int @default(0)
+    publicChatMessages Int @default(0)
+    voiceChatMinutes   Int @default(0)
+    modActionsCount    Int @default(0)
+    casesHandledCount  Int @default(0)
+
+    totalPoints Float
+    rawPoints   Float
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([moderatorId, year, month]) // Prevent duplicate reports for the same month
 }
 
 // Replaces 'ModerationCaseAction'
