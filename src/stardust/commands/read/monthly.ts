@@ -40,7 +40,33 @@ async function command(interaction: ChatInputCommandInteraction) {
 		.setColor('#0099ff')
 		.setTimestamp();
 
-	await interaction.editReply({ embeds: [monthlyEmbed] });
+	// Create CSV of all active moderators' stats
+	const csv = [
+		'Moderator ID,Moderator Username,Total Points,Raw Points,Wasted Points,Mod Chat,Public Chat,Voice Minutes,Mod Actions,Cases Handled',
+		...stats.map((s) =>
+			[
+				s.moderatorId,
+				s.totalPoints,
+				s.rawPoints,
+				s.rawPoints - s.totalPoints,
+				s.modChatMessages,
+				s.publicChatMessages,
+				s.voiceChatMinutes,
+				s.modActionsCount,
+				s.casesHandledCount
+			].join(',')
+		)
+	].join('\n');
+
+	return await interaction.editReply({
+		embeds: [monthlyEmbed],
+		files: [
+			{
+				attachment: Buffer.from(csv),
+				name: `monthly-report-${month}-${year}.csv`
+			}
+		]
+	});
 }
 
 export default {
