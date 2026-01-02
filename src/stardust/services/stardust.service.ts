@@ -130,7 +130,7 @@ export async function getMonthRecords(userId: string, month: number, year: numbe
 }
 
 export async function getMonthlyReport(month: number, year: number) {
-	let stats: MonthlyStat[] = await prisma.monthlyStat.findMany({
+	let stats = await prisma.monthlyStat.findMany({
 		where: {
 			month,
 			year

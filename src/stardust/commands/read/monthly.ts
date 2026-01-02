@@ -42,10 +42,11 @@ async function command(interaction: ChatInputCommandInteraction) {
 
 	// Create CSV of all active moderators' stats
 	const csv = [
-		'Moderator ID,Moderator Username,Total Points,Raw Points,Wasted Points,Mod Chat,Public Chat,Voice Minutes,Mod Actions,Cases Handled',
+		'ID,Username,Total Points,Raw Points,Wasted Points,Mod Chat,Public Chat,Voice Minutes,Mod Actions,Cases Handled',
 		...stats.map((s) =>
 			[
 				s.moderatorId,
+				s.moderator.user.username,
 				s.totalPoints,
 				s.rawPoints,
 				s.rawPoints - s.totalPoints,
