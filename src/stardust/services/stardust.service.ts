@@ -1,6 +1,11 @@
+// Stardust Service Layer
+// Handles all interactions related to fetching and computing stardust data
+
 import { prisma } from '@modules/_core/lib/prisma';
-import { getWeekRange } from '../lib/utils';
+import { getDateFromWeekNumber, getWeekRange, getGuild, getChannelsInCategory } from '../lib/utils';
 import { computeWeightedPoints } from '../lib/points';
+import { envParseString } from '@skyra/env-utilities';
+import * as StarStatBot from './startrack.service';
 import { MonthlyStat, WeeklyStat } from '@prisma/client';
 
 export async function ensureUser(userId: string, username: string) {
@@ -47,6 +52,34 @@ export async function getModeratorsList() {
 	return await prisma.moderatorProfile.findMany({
 		where: { active: true },
 		include: { user: true }
+	});
+}
+
+export async function fetchModActions(memberId: string, week: number, year: number) {
+	const { startWeek, endWeek } = await getWeekRange(week, year);
+	const start = getDateFromWeekNumber(startWeek, year, 'start');
+	const end = getDateFromWeekNumber(endWeek, year, 'end');
+
+	return await prisma.modAction.count({
+		where: {
+			moderator: { userId: memberId },
+			performedAt: { gte: start, lte: end },
+			action: { in: ['BAN', 'WARN', 'MUTE', 'KICK'] }
+		}
+	});
+}
+
+export async function fetchModmailCases(memberId: string, week: number, year: number) {
+	const { startWeek, endWeek } = await getWeekRange(week, year);
+	const start = getDateFromWeekNumber(startWeek, year, 'start');
+	const end = getDateFromWeekNumber(endWeek, year, 'end');
+
+	return await prisma.modmailThreadClosure.count({
+		where: {
+			pointsAwardedToId: memberId,
+			approved: true,
+			closedAt: { gte: start, lte: end }
+		}
 	});
 }
 
@@ -253,4 +286,39 @@ function calculateTotalStats(stats: MonthlyStat[] | WeeklyStat[]) {
 			casesHandledCount: 0
 		}
 	);
+}
+
+export async function fetchAllMetrics(memberId: string, week: number, year: number) {
+	const serverID = envParseString('MainServer_ID');
+	const guild = await getGuild(serverID);
+	const modChatChannelIds = await getChannelsInCategory(guild, envParseString('MainServer_ModChatCategoryID'));
+	const modCommandsChannelIds = await getChannelsInCategory(guild, envParseString('MainServer_ModCommandsCategoryID'));
+
+	const [modChatMessages, publicChatMessages, voiceChatMinutes, modActionsTaken, casesHandled] = await Promise.all([
+		StarStatBot.fetchModChatMessageCount({ moderatorId: memberId, week, year, serverID, channelIds: modChatChannelIds }),
+		StarStatBot.fetchPublicChatMessageCount({
+			moderatorId: memberId,
+			week,
+			year,
+			serverID,
+			channelIds: [...modChatChannelIds, ...modCommandsChannelIds]
+		}),
+		StarStatBot.fetchVoiceMinutes({
+			moderatorId: memberId,
+			week,
+			year,
+			serverID,
+			channelIds: [...modChatChannelIds, ...modCommandsChannelIds]
+		}),
+		fetchModActions(memberId, week, year),
+		fetchModmailCases(memberId, week, year)
+	]);
+
+	return {
+		modChatMessages,
+		publicChatMessages,
+		voiceChatMinutes,
+		modActionsTaken,
+		casesHandled
+	};
 }
