@@ -68,7 +68,7 @@ export async function getCurrentMonthPoints(userId: string, month: number, year:
 
 async function computeWeeklyPointsAndUpdate(weeklyStat: WeeklyStat) {
 	const stopwatch = new Stopwatch();
-	// container.logger.trace(`[StatsService] [computeWeeklyPointsAndUpdate] Computing points for Week ${weeklyStat.week}, ${weeklyStat.year}`);
+	container.logger.trace(`[StatsService] [computeWeeklyPointsAndUpdate] Computing points for Week ${weeklyStat.week}, ${weeklyStat.year}`);
 
 	const points = computeWeightedPoints({
 		modChatMessages: weeklyStat.modChatMessages,
@@ -94,7 +94,7 @@ async function computeWeeklyPointsAndUpdate(weeklyStat: WeeklyStat) {
 		include: { moderator: { include: { user: true } } }
 	});
 
-	// container.logger.trace(`[StatsService] [computeWeeklyPointsAndUpdate] Completed. Took ${stopwatch.stop()}`);
+	container.logger.trace(`[StatsService] [computeWeeklyPointsAndUpdate] Completed. Took ${stopwatch.stop()}`);
 	return result;
 }
 
@@ -332,7 +332,7 @@ export async function processWeeklyStats(week: number, year: number, explicitMod
 			await prisma.weeklyStat.upsert({
 				where: {
 					moderatorId_year_week: {
-						moderatorId: mod.id,
+						moderatorId: mod.userId,
 						year,
 						week
 					}
@@ -346,7 +346,7 @@ export async function processWeeklyStats(week: number, year: number, explicitMod
 					updatedAt: new Date()
 				},
 				create: {
-					moderatorId: mod.id,
+					moderatorId: mod.userId,
 					year,
 					week,
 					modChatMessages: metrics.modChatMessages,
