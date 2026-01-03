@@ -1,6 +1,6 @@
 import { pluginCommand } from '_core/sapphire';
 import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandSubcommandBuilder } from 'discord.js';
-import { getMonthlyReport } from '@modules/stardust/services/stardust';
+import { getMonthlyReport } from '@modules/stardust/services/stardust/stats.service';
 
 async function command(interaction: ChatInputCommandInteraction) {
 	await interaction.deferReply({ flags: ['Ephemeral'] });
