@@ -108,7 +108,7 @@ export async function getWeeklyRecords(userId: string, week: number, year: numbe
 	let stat = await prisma.weeklyStat.findUniqueOrThrow({
 		where: {
 			moderatorId_year_week: {
-				moderatorId: profile.id,
+				moderatorId: userId,
 				year,
 				week
 			}
