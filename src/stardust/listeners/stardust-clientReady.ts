@@ -1,10 +1,6 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Events, Listener } from '@sapphire/framework';
-import {
-	syncModActions,
-	syncModmail,
-	backfillWeeklyRecords
-} from '../services/stardust.service';
+import { syncModActions, syncModmail, backfillWeeklyRecords } from '../services/stardust';
 
 @ApplyOptions<Listener.Options>({ event: Events.ClientReady, once: true })
 export class StardustReady extends Listener {
@@ -35,5 +31,4 @@ export class StardustReady extends Listener {
 
 		return { server, casesChannel, modmailChannel: modmailChannel?.isTextBased() ? modmailChannel : null };
 	}
-
 }

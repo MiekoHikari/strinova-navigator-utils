@@ -1,5 +1,5 @@
 import { ScheduledTask } from '@sapphire/plugin-scheduled-tasks';
-import { syncModActions, syncModmail, getMonthlyReport } from '../services/stardust.service';
+import { syncModActions, syncModmail, getMonthlyReport } from '../services/stardust';
 import { envParseString } from '@skyra/env-utilities';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 
@@ -9,7 +9,7 @@ export class GenerateMonthlyReport extends ScheduledTask {
 			...options,
 			pattern: '5 0 1 * *', // 1st of every month at 00:05 AM
 			timezone: 'UTC',
-            name: 'generateMonthlyReport',
+			name: 'generateMonthlyReport'
 		});
 	}
 

@@ -1,7 +1,7 @@
 import { ChatInputCommandInteraction, SlashCommandSubcommandBuilder, userMention } from 'discord.js';
 import { ChatInputCommandContext, Result } from '@sapphire/framework';
 import { pluginCommand } from '../../../_core/sapphire';
-import { activateEnrollment, ensureUser } from 'stardust/services/stardust.service';
+import { activateEnrollment, ensureUser } from '@modules/stardust/services/stardust';
 
 async function command(interaction: ChatInputCommandInteraction, _context: ChatInputCommandContext) {
 	await interaction.deferReply({ flags: ['Ephemeral'] });

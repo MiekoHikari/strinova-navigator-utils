@@ -1,4 +1,4 @@
-import { prisma } from '../../_core/lib/prisma';
+import { prisma } from '../../../_core/lib/prisma';
 
 export async function ensureUser(userId: string, username: string) {
 	return await prisma.user.upsert({

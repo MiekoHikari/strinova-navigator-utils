@@ -1,8 +1,8 @@
-import { prisma } from '../../_core/lib/prisma';
-import { getDateFromWeekNumber, getWeekRange, getGuild, getChannelsInCategory, getISOWeekNumber } from '../lib/utils';
-import { computeWeightedPoints } from '../lib/points';
+import { prisma } from '../../../_core/lib/prisma';
+import { getDateFromWeekNumber, getWeekRange, getGuild, getChannelsInCategory, getISOWeekNumber } from '../../lib/utils';
+import { computeWeightedPoints } from '../../lib/points';
 import { envParseString } from '@skyra/env-utilities';
-import * as StarStatBot from './startrack.service';
+import * as StarStatBot from '../startrack.service';
 import { MonthlyStat, WeeklyStat } from '@prisma/client';
 import { container } from '@sapphire/framework';
 import { getModeratorsList } from './profile.service';

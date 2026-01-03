@@ -1,9 +1,9 @@
-import { prisma } from '../../_core/lib/prisma';
+import { prisma } from '../../../_core/lib/prisma';
 import { container } from '@sapphire/framework';
 import { Message, Snowflake, TextBasedChannel } from 'discord.js';
-import { parseModerationEmbed, type ParsedCaseAction } from '../lib/parsers/caseParser';
-import { parseModmailEmbed, type ParsedModmailClosure } from '../lib/parsers/modmailParser';
-import { getGuild } from '../lib/utils';
+import { parseModerationEmbed, type ParsedCaseAction } from '../../lib/parsers/caseParser';
+import { parseModmailEmbed, type ParsedModmailClosure } from '../../lib/parsers/modmailParser';
+import { getGuild } from '../../lib/utils';
 import { envParseString } from '@skyra/env-utilities';
 
 export async function upsertModAction(data: ParsedCaseAction, messageId: string, channelId: string) {

@@ -1,5 +1,5 @@
 import { ScheduledTask } from '@sapphire/plugin-scheduled-tasks';
-import { syncModActions, syncModmail, processWeeklyStats } from '../services/stardust.service';
+import { syncModActions, syncModmail, processWeeklyStats } from '../services/stardust';
 import { getISOWeekNumber } from '../lib/utils';
 import { envParseString } from '@skyra/env-utilities';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
@@ -11,7 +11,7 @@ export class GenerateWeeklyReport extends ScheduledTask {
 			...options,
 			pattern: '0 0 * * 1', // Every Monday at midnight,
 			timezone: 'UTC',
-			name: 'generateWeeklyReport',
+			name: 'generateWeeklyReport'
 		});
 	}
 
