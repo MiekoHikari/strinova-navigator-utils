@@ -335,7 +335,7 @@ export async function processWeeklyStats(week: number, year: number, explicitMod
 			const metrics = await fetchAllMetrics(mod.userId, week, year);
 			container.logger.trace(`[StatsService] [processWeeklyStats] Metrics for ${mod.user.username}: ${JSON.stringify(metrics)}`);
 
-			await prisma.weeklyStat.upsert({
+			const upsertedStat = await prisma.weeklyStat.upsert({
 				where: {
 					moderatorId_year_week: {
 						moderatorId: mod.userId,
@@ -365,7 +365,7 @@ export async function processWeeklyStats(week: number, year: number, explicitMod
 				}
 			});
 
-			const result = await getWeeklyRecords(mod.userId, week, year);
+			const result = await computeWeeklyPointsAndUpdate(upsertedStat);
 			container.logger.debug(
 				`[StatsService] [processWeeklyStats] Updated stats for ${mod.user.username}. Raw=${result.rawPoints}, Total=${result.totalPoints}`
 			);
