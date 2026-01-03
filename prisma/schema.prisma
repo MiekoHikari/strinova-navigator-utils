@@ -44,7 +44,7 @@ model WeeklyStat {
     id String @id @default(uuid())
 
     moderatorId String
-    moderator   ModeratorProfile @relation(fields: [moderatorId], references: [id])
+    moderator   ModeratorProfile @relation(fields: [moderatorId], references: [userId])
 
     year Int
     week Int
@@ -75,7 +75,7 @@ model MonthlyStat {
     id String @id @default(uuid())
 
     moderatorId String
-    moderator   ModeratorProfile @relation(fields: [moderatorId], references: [id])
+    moderator   ModeratorProfile @relation(fields: [moderatorId], references: [userId])
 
     year  Int
     month Int

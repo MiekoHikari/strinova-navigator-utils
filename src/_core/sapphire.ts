@@ -85,8 +85,7 @@ export class StrinovaSapphireClient extends SapphireClient {
 					const routePath = join(path, 'commands', 'route.js');
 					this.logger.debug(`Loading route from: ${routePath}`);
 					try {
-						const loadResult = await commandStore.load(join(path, 'commands'), 'route.js');
-						this.logger.debug(`Load result: ${JSON.stringify(loadResult)}`);
+						await commandStore.load(join(path, 'commands'), 'route.js');
 						this.logger.debug(`Command store size after load: ${commandStore.size}`);
 					} catch (error) {
 						this.logger.error(`Failed to load route:`, error);

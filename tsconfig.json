@@ -5,9 +5,6 @@
 		"outDir": "dist",
 		"baseUrl": "src",
 		"tsBuildInfoFile": "dist/.tsbuildinfo",
-		"paths": {
-			"@modules/*": ["./*"],
-		}
 	},
 	"include": ["src"]
 }

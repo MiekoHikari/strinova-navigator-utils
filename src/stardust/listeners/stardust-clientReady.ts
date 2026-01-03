@@ -1,6 +1,7 @@
 import { ApplyOptions } from '@sapphire/decorators';
 import { Events, Listener } from '@sapphire/framework';
-import { syncModActions, syncModmail, backfillWeeklyRecords } from '../services/stardust';
+import { syncModActions, syncModmail } from '../services/stardust/sync.service';
+import { backfillWeeklyRecords } from '../services/stardust/stats.service';
 
 @ApplyOptions<Listener.Options>({ event: Events.ClientReady, once: true })
 export class StardustReady extends Listener {

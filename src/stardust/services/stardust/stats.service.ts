@@ -102,8 +102,6 @@ export async function getWeeklyRecords(userId: string, week: number, year: numbe
 	const stopwatch = new Stopwatch();
 	container.logger.debug(`[StatsService] [getWeeklyRecords] Fetching records for ${userId} (Week ${week}, ${year})`);
 
-	const profile = await prisma.moderatorProfile.findUniqueOrThrow({ where: { userId } });
-
 	// Compute points first
 	let stat = await prisma.weeklyStat.findUniqueOrThrow({
 		where: {
@@ -155,6 +153,9 @@ export async function getMonthlyReport(month: number, year: number) {
 		include: { moderator: { include: { user: true } } }
 	});
 
+	// Filter out potential bad data (orphaned records)
+	stats = stats.filter((s) => s.moderator && s.moderator.user);
+
 	// If we don't have a report, check if month has passed yet
 	if (stats.length === 0) {
 		const now = new Date();
@@ -177,9 +178,12 @@ export async function getMonthlyReport(month: number, year: number) {
 			include: { moderator: { include: { user: true } } }
 		});
 
+		// Filter out bad weekly stats
+		const validWeeklyStats = weeklyStats.filter((s) => s.moderator && s.moderator.user);
+
 		const aggregatedStats = new Map<string, any>();
 
-		for (const stat of weeklyStats) {
+		for (const stat of validWeeklyStats) {
 			if (!aggregatedStats.has(stat.moderatorId)) {
 				aggregatedStats.set(stat.moderatorId, {
 					moderatorId: stat.moderatorId,
@@ -238,6 +242,8 @@ export async function getMonthlyReport(month: number, year: number) {
 				},
 				include: { moderator: { include: { user: true } } }
 			});
+			// Filter again just in case
+			stats = stats.filter((s) => s.moderator && s.moderator.user);
 		}
 	}
 

@@ -1,6 +1,7 @@
 import { pluginCommand } from '_core/sapphire';
 import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandSubcommandBuilder } from 'discord.js';
-import { ensureUser, getCurrentMonthPoints, getModeratorProfile } from '@modules/stardust/services/stardust';
+import { ensureUser, getModeratorProfile } from '../../services/stardust/profile.service';
+import { getCurrentMonthPoints } from '../../services/stardust/stats.service';
 
 async function command(interaction: ChatInputCommandInteraction) {
 	await interaction.deferReply({ flags: ['Ephemeral'] });
@@ -28,7 +29,7 @@ async function command(interaction: ChatInputCommandInteraction) {
 		\n> **Active Enrollment:** ${moderatorProfile.active ? 'Yes' : 'No'}\
 		\n> **Total Mod Actions:** ${moderatorProfile.modActions.length}\
 		\n> **Weeks Participated:** ${moderatorProfile.weeklyStats.length}\
-		\n> **Current Month Points:** ${currentMonthPoints}\
+		\n> **Current Month Points:** ${currentMonthPoints.finalPoints}\
 		\n\
 		\n### Recent Weeks Stats\
 		\n${moderatorProfile.weeklyStats
