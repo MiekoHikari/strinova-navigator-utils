@@ -1,4 +1,4 @@
-import './lib/setup';
+import './_core/lib/setup';
 
 import { LogLevel } from '@sapphire/framework';
 import { IntentsBitField, Partials } from 'discord.js';
@@ -17,9 +17,17 @@ const client = new StrinovaSapphireClient(
 			IntentsBitField.Flags.MessageContent,
 			IntentsBitField.Flags.GuildVoiceStates
 		],
-		partials: [Partials.Message, Partials.Channel, Partials.User, Partials.GuildMember]
+		partials: [Partials.Message, Partials.Channel, Partials.User, Partials.GuildMember],
+		tasks: {
+			bull: {
+				connection: {
+					host: 'localhost',
+					port: 6379
+				}
+			}
+		}
 	},
-	['_core']
+	['_core', 'stardust']
 );
 
 const main = async () => {

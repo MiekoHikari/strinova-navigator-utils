@@ -2,7 +2,8 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-    provider = "prisma-client-js"
+    provider   = "prisma-client-js"
+    engineType = "library"
 }
 
 datasource db {
@@ -20,7 +21,6 @@ model User {
 
     // Relations
     moderatorProfile ModeratorProfile?
-    playerReports    PlayerReport[]
 }
 
 // Only users who are enrolled as moderators get this profile.
@@ -31,7 +31,7 @@ model ModeratorProfile {
 
     enrolledAt DateTime @default(now())
     active     Boolean  @default(true)
-    tier       Int      @default(0)
+    tier       Int      @default(3)
 
     // Relations
     weeklyStats  WeeklyStat[]
@@ -102,7 +102,7 @@ model ModAction {
     // If we can link it to a moderator, we do. 
     // If it was parsed from an embed without an ID, this might be null.
     moderatorId String?
-    moderator   ModeratorProfile? @relation(fields: [moderatorId], references: [id])
+    moderator   ModeratorProfile? @relation(fields: [moderatorId], references: [userId])
 
     // Fallback if we only have the username from an embed
     performedByUsername String?
@@ -118,32 +118,12 @@ model ModAction {
     createdAt DateTime @default(now())
 }
 
-// Replaces 'PlayerReport'
-model PlayerReport {
-    id String @id @default(uuid())
-
-    reporterId String
-    reporter   User   @relation(fields: [reporterId], references: [id])
-
-    guildId          String
-    reportedPlayerId String?
-    reportedNickname String?
-    matchId          String?
-    summary          String?
-
-    status String // IN_PROGRESS, SUBMITTED, etc.
-
-    // Thread info
-    threadId String?
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-}
-
 model ModmailThreadClosure {
     id                String   @id @default(uuid())
     guildId           String
     threadId          String   @unique
+    messageId         String   @unique
+    channelId         String
     userId            String
     closedByUserId    String
     pointsAwardedToId String?

@@ -2,4 +2,6 @@ onlyBuiltDependencies:
   - '@prisma/engines'
   - '@sapphire/type'
   - '@swc/core'
+  - better-sqlite3
+  - msgpackr-extract
   - prisma

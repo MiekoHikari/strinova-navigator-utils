@@ -1,6 +1,6 @@
 import { pluginCommand } from '_core/sapphire';
 import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandSubcommandBuilder } from 'discord.js';
-import { ensureUser, getCurrentMonthPoints, getWeeklyRecords } from 'stardust/services/stardust.service';
+import { ensureUser, getWeeklyRecords } from 'stardust/services/stardust.service';
 
 async function command(interaction: ChatInputCommandInteraction) {
 	await interaction.deferReply({ flags: ['Ephemeral'] });
@@ -12,7 +12,6 @@ async function command(interaction: ChatInputCommandInteraction) {
 	await ensureUser(user.id, user.username);
 
 	const moderatorWeeklyStat = await getWeeklyRecords(user.id, week, year);
-	const currentMonthPoints = await getCurrentMonthPoints(user.id, new Date().getMonth() + 1, new Date().getFullYear());
 
 	const weeklyEmbed = new EmbedBuilder()
 		.setAuthor({ name: `Moderator Weekly Stat` })
@@ -26,11 +25,11 @@ async function command(interaction: ChatInputCommandInteraction) {
 		\n> **Current Reward Tier:** ${moderatorWeeklyStat.moderator.tier}
 		\n\
 		\n### Points Information\
-		\n> **Current Month Raw Points:** ${currentMonthPoints.rawPoints}\
-		\n> **Current Month Final Points:** ${currentMonthPoints.finalPoints}\
-		\n> **Current Month Wasted Points:** ${currentMonthPoints.wastedPoints}\
+		\n> **Week Raw Points:** ${moderatorWeeklyStat.rawPoints}\
+		\n> **Week Final Points:** ${moderatorWeeklyStat.totalPoints}\
+		\n> **Week Wasted Points:** ${moderatorWeeklyStat.rawPoints - moderatorWeeklyStat.totalPoints}\
 		\n\
-		\n### Current Week Stats\
+		\n### Week Stats\
 		\n> **Mod Chat Messages:** ${moderatorWeeklyStat.modChatMessages}\
 		\n> **Public Chat Messages:** ${moderatorWeeklyStat.publicChatMessages}\
 		\n> **Voice Chat Minutes:** ${moderatorWeeklyStat.voiceChatMinutes}\

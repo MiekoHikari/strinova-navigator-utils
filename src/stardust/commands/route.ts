@@ -55,18 +55,28 @@ function getCommandsByDirectory() {
 // Get all commands organized by directory
 const commandGroups = getCommandsByDirectory();
 
+// Create a map to store the command functions
+const commandMethods = new Map<string, any>();
+
 // Create subcommand entries
 const subcommandEntries = Array.from(commandGroups.entries()).map(([groupName, commands]) => ({
 	name: groupName,
 	type: 'group' as const,
-	entries: commands.map((cmd) => cmd.sapphire)
+	entries: commands.map((cmd) => {
+		const methodName = `${groupName}_${cmd.sapphire.name}`;
+		commandMethods.set(methodName, cmd.sapphire.chatInputRun);
+		return {
+			...cmd.sapphire,
+			chatInputRun: methodName
+		};
+	})
 }));
 
 @ApplyOptions<Subcommand.Options>({
 	name: 'stardust',
 	description: 'Stardust Program management and utilities',
 	subcommands: subcommandEntries,
-	preconditions: ['leadModsOnly', 'staffOnly']
+	preconditions: [['leadModsOnly', 'staffOnly']]
 })
 export class UserCommand extends Subcommand {
 	public override registerApplicationCommands(registry: Subcommand.Registry) {
@@ -91,4 +101,9 @@ export class UserCommand extends Subcommand {
 		// Register the command with Sapphire
 		registry.registerChatInputCommand(commandBuilder);
 	}
+}
+
+// Attach the methods to the class prototype
+for (const [methodName, method] of commandMethods.entries()) {
+	(UserCommand.prototype as any)[methodName] = method;
 }

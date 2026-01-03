@@ -16,7 +16,7 @@ export async function getWeekRange(month: number, year: number) {
 	return { startWeek, endWeek };
 }
 
-function getISOWeekNumber(date: Date) {
+export function getISOWeekNumber(date: Date) {
 	const tempDate = new Date(date.getTime());
 
 	tempDate.setHours(0, 0, 0, 0);

@@ -1,4 +1,4 @@
-import { computeWeightedPoints } from '@modules/stardust/lib/points';
+import { computeWeightedPoints } from '../../lib/points';
 import { pluginCommand } from '_core/sapphire';
 import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandSubcommandBuilder } from 'discord.js';
 

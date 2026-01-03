@@ -6,6 +6,7 @@ import '@sapphire/plugin-api/register';
 import '@sapphire/plugin-editable-commands/register';
 import '@sapphire/plugin-logger/register';
 import '@sapphire/plugin-subcommands/register';
+import '@sapphire/plugin-scheduled-tasks/register';
 import { envParseString, setup } from '@skyra/env-utilities';
 import * as colorette from 'colorette';
 import { join } from 'path';
@@ -33,8 +34,6 @@ declare module '@skyra/env-utilities' {
 		MainServer_ID: string;
 		MainServer_StaffRoleID: string;
 		MainServer_LeadModRoleID: string;
-		MainServer_ModRoleID: string;
-		MainServer_TrialModRoleID: string;
 		MainServer_ModChatCategoryID: string;
 		MainServer_ModCommandsCategoryID: string;
 		MainServer_ModCasesChannelID: string;
@@ -44,5 +43,6 @@ declare module '@skyra/env-utilities' {
 		MainServer_WeeklyReportChannelID: string;
 		MainServer_MonthlyReportChannelID: string;
 		Statbot_Key: string;
+		DATABASE_URL: string;
 	}
 }

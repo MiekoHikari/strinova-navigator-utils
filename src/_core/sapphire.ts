@@ -45,29 +45,57 @@ export class StrinovaSapphireClient extends SapphireClient {
 			process.exit(1);
 		}
 
-		const loggedInToken = await super.login(token);
-		this.logger.info('Sapphire Client logged in!');
-
-		this.logger.debug('Attempting to load commands...');
+		// Register non-command stores for extensions with route files BEFORE super.login()
 		const commandStore = this.stores.get('commands');
 
 		for (const extension of this.extensions) {
 			const path = join(this.rootData.root, extension);
 
 			if (existsSync(path)) {
-				this.stores.registerPath(path);
+				const hasRouteFile = existsSync(join(path, 'commands', 'route.js'));
 
-				if (existsSync(join(path, 'commands', 'route.js'))) {
-					await commandStore.load(join(path, 'commands'), 'route.js');
+				if (hasRouteFile) {
+					// Register paths for all stores EXCEPT commands when using custom route loader
+					for (const store of this.stores.values()) {
+						if (store.name !== 'commands') {
+							store.registerPath(join(path, store.name));
+						}
+					}
 				} else {
-					commandStore.registerPath(join(path, 'commands'));
+					// No route file - register all stores including commands normally
+					this.stores.registerPath(path);
 				}
 			} else {
 				console.warn(`Extension path does not exist: ${extension}`);
 			}
 		}
 
-		this.stores.register(commandStore);
+		// Login first - this loads all stores from registered paths
+		const loggedInToken = await super.login(token);
+
+		// Now load custom route commands AFTER super.login() has completed
+		this.logger.debug('Loading custom route commands...');
+		for (const extension of this.extensions) {
+			const path = join(this.rootData.root, extension);
+
+			if (existsSync(path)) {
+				const hasRouteFile = existsSync(join(path, 'commands', 'route.js'));
+
+				if (hasRouteFile) {
+					const routePath = join(path, 'commands', 'route.js');
+					this.logger.debug(`Loading route from: ${routePath}`);
+					try {
+						const loadResult = await commandStore.load(join(path, 'commands'), 'route.js');
+						this.logger.debug(`Load result: ${JSON.stringify(loadResult)}`);
+						this.logger.debug(`Command store size after load: ${commandStore.size}`);
+					} catch (error) {
+						this.logger.error(`Failed to load route:`, error);
+					}
+				}
+			}
+		}
+
+		this.logger.info('Sapphire Client logged in!');
 
 		return loggedInToken;
 	}
