@@ -1,6 +1,6 @@
 import { ScheduledTask } from '@sapphire/plugin-scheduled-tasks';
 import { syncModActions, syncModmail } from '../services/stardust/sync.service';
-import { getMonthlyReport } from '../services/stardust/stats.service';
+import { getMonthlyReport } from '../services/stardust/reporting.service';
 import { envParseString } from '@skyra/env-utilities';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 

@@ -3,7 +3,9 @@ import { Events, Listener } from '@sapphire/framework';
 import { syncModActions, syncModmail } from '../services/stardust/sync.service';
 import { backfillWeeklyRecords } from '../services/stardust/stats.service';
 
-@ApplyOptions<Listener.Options>({ event: Events.ClientReady, once: true })
+// BUG: Disabled until stardust module is fully ready for use
+
+@ApplyOptions<Listener.Options>({ event: Events.ClientReady, once: true, enabled: true })
 export class StardustReady extends Listener {
 	public async run() {
 		this.container.logger.info('[Stardust] Stardust module is ready.');

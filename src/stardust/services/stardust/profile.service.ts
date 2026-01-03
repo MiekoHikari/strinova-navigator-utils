@@ -15,25 +15,25 @@ export async function getUser(userId: string) {
 }
 
 export async function activateEnrollment(userId: string) {
-	const profile = await prisma.moderatorProfile.findUnique({ where: { userId } });
+	const profile = await prisma.moderatorProfile.findUnique({ where: { id: userId } });
 
 	if (profile?.active) throw new Error('Enrollment is already active.');
 
 	await prisma.moderatorProfile.upsert({
-		where: { userId },
+		where: { id: userId },
 		update: { active: true, enrolledAt: new Date() },
-		create: { userId, active: true, enrolledAt: new Date() }
+		create: { id: userId, active: true, enrolledAt: new Date() }
 	});
 
 	return;
 }
 
 export async function deactivateEnrollment(userId: string) {
-	const profile = await prisma.moderatorProfile.findUniqueOrThrow({ where: { userId } });
+	const profile = await prisma.moderatorProfile.findUniqueOrThrow({ where: { id: userId } });
 	if (!profile.active) throw new Error('Enrollment is already inactive.');
 
 	await prisma.moderatorProfile.update({
-		where: { userId },
+		where: { id: userId },
 		data: { active: false }
 	});
 
@@ -49,7 +49,7 @@ export async function getModeratorsList() {
 
 export async function getModeratorProfile(userId: string) {
 	return await prisma.moderatorProfile.findUniqueOrThrow({
-		where: { userId },
+		where: { id: userId },
 		include: { user: true, weeklyStats: true, modActions: true }
 	});
 }

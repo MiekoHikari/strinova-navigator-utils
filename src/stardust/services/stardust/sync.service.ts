@@ -156,7 +156,9 @@ async function catchupMessages(
 			if (alreadyProcessed) {
 				alreadyHadStreak++;
 				if (alreadyHadStreak >= MAX_CONSECUTIVE_ALREADY) {
-					container.logger.info(`[SyncService] [catchupMessages] Reached already stored ${typeName} streak; stopping. Processed ${processedCount} messages. Took ${stopwatch.stop()}`);
+					container.logger.info(
+						`[SyncService] [catchupMessages] Reached already stored ${typeName} streak; stopping. Processed ${processedCount} messages. Took ${stopwatch.stop()}`
+					);
 					return;
 				}
 			} else {
@@ -181,12 +183,15 @@ export async function syncModActions(channel?: TextBasedChannel) {
 	if (!channel) {
 		const serverID = envParseString('MainServer_ID');
 		const channelID = envParseString('MainServer_ModCasesChannelID');
+
 		const guild = await container.client.guilds.fetch(serverID);
 		const fetchedChannel = await guild.channels.fetch(channelID);
+
 		if (!fetchedChannel?.isTextBased()) {
 			container.logger.warn(`[SyncService] [syncModActions] Mod cases channel is not text-based or found.`);
 			return;
 		}
+
 		channel = fetchedChannel as TextBasedChannel;
 	}
 
@@ -201,12 +206,15 @@ export async function syncModmail(channel?: TextBasedChannel) {
 	if (!channel) {
 		const serverID = envParseString('MainServer_ID');
 		const channelID = envParseString('MainServer_ModMailChannelID');
+
 		const guild = await container.client.guilds.fetch(serverID);
 		const fetchedChannel = await guild.channels.fetch(channelID);
+
 		if (!fetchedChannel?.isTextBased()) {
 			container.logger.warn(`[SyncService] [syncModmail] Modmail channel is not text-based or found.`);
 			return;
 		}
+
 		channel = fetchedChannel as TextBasedChannel;
 	}
 
@@ -227,6 +235,7 @@ async function upsertModActionFromMessage(message: Message) {
 
 	const entry = await upsertModAction(parsed, message.id, message.channelId);
 
+	container.logger.debug(`[SyncService] [upsertModActionFromMessage] Scheduled AttemptFetchID for Mod Action entry ${entry.id}`);
 	if (!entry.moderatorId) container.tasks.create({ name: 'attemptFetchID', payload: { modActionDatabaseID: entry.id } });
 	return false;
 }

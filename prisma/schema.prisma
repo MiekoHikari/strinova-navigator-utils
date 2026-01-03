@@ -13,7 +13,7 @@ datasource db {
 // Central User table. 
 // We store the Discord ID as the primary key to avoid duplication.
 model User {
-    id        String   @id // Discord User ID
+    id        String   @id @unique // Discord User ID
     username  String? // Cached username for display
     babloUID  String?  @unique // Optional Bablo ID linkage
     createdAt DateTime @default(now())
@@ -25,9 +25,8 @@ model User {
 
 // Only users who are enrolled as moderators get this profile.
 model ModeratorProfile {
-    id     String @id @default(uuid())
-    userId String @unique
-    user   User   @relation(fields: [userId], references: [id])
+    id   String @id @unique
+    user User   @relation(fields: [id], references: [id])
 
     enrolledAt DateTime @default(now())
     active     Boolean  @default(true)
@@ -44,7 +43,7 @@ model WeeklyStat {
     id String @id @default(uuid())
 
     moderatorId String
-    moderator   ModeratorProfile @relation(fields: [moderatorId], references: [userId])
+    moderator   ModeratorProfile @relation(fields: [moderatorId], references: [id])
 
     year Int
     week Int
@@ -75,7 +74,7 @@ model MonthlyStat {
     id String @id @default(uuid())
 
     moderatorId String
-    moderator   ModeratorProfile @relation(fields: [moderatorId], references: [userId])
+    moderator   ModeratorProfile @relation(fields: [moderatorId], references: [id])
 
     year  Int
     month Int
@@ -102,7 +101,7 @@ model ModAction {
     // If we can link it to a moderator, we do. 
     // If it was parsed from an embed without an ID, this might be null.
     moderatorId String?
-    moderator   ModeratorProfile? @relation(fields: [moderatorId], references: [userId])
+    moderator   ModeratorProfile? @relation(fields: [moderatorId], references: [id])
 
     // Fallback if we only have the username from an embed
     performedByUsername String?

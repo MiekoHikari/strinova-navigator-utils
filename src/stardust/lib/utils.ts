@@ -37,6 +37,7 @@ export function getDateFromWeekNumber(week: number, year: number, type: 'start' 
 
 	if (type === 'end') {
 		targetDate.setDate(targetDate.getDate() + 6);
+		targetDate.setHours(23, 59, 59, 999);
 	}
 
 	return targetDate;
