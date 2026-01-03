@@ -3,7 +3,7 @@ import { getDateFromWeekNumber, getWeekRange, getGuild, getChannelsInCategory, g
 import { computeWeightedPoints } from '../../lib/points';
 import { envParseString } from '@skyra/env-utilities';
 import * as StarStatBot from '../startrack.service';
-import { MonthlyStat, WeeklyStat } from '@prisma/client';
+import { MonthlyStat, WeeklyStat, ModeratorProfile, User } from '@prisma/client';
 import { container } from '@sapphire/framework';
 import { Stopwatch } from '@sapphire/stopwatch';
 import { getModeratorsList } from './profile.service';
@@ -60,7 +60,9 @@ export async function getCurrentMonthPoints(userId: string, month: number, year:
 	const finalPoints = points.reduce((acc, point) => acc + point.rawPoints, 0);
 	const wastedPoints = rawPoints - finalPoints;
 
-	container.logger.info(`[StatsService] [getCurrentMonthPoints] Completed. Raw: ${rawPoints}, Final: ${finalPoints}, Wasted: ${wastedPoints}. Took ${stopwatch.stop()}`);
+	container.logger.info(
+		`[StatsService] [getCurrentMonthPoints] Completed. Raw: ${rawPoints}, Final: ${finalPoints}, Wasted: ${wastedPoints}. Took ${stopwatch.stop()}`
+	);
 	return { rawPoints, finalPoints, wastedPoints };
 }
 
@@ -314,18 +316,18 @@ export async function fetchAllMetrics(memberId: string, week: number, year: numb
 	};
 }
 
-export async function processWeeklyStats(week: number, year: number) {
+export async function processWeeklyStats(week: number, year: number, explicitModerators?: (ModeratorProfile & { user: User })[]) {
 	const stopwatch = new Stopwatch();
 	container.logger.info(`[StatsService] [processWeeklyStats] Starting processing for Week ${week}, ${year}`);
 
-	const moderators = await getModeratorsList();
-	container.logger.info(`[StatsService] [processWeeklyStats] Found ${moderators.length} active moderators.`);
+	const moderators = explicitModerators || (await getModeratorsList());
+	container.logger.info(`[StatsService] [processWeeklyStats] Found ${moderators.length} moderators to process.`);
 
 	for (const mod of moderators) {
 		container.logger.debug(`[StatsService] [processWeeklyStats] Processing metrics for ${mod.user.username} (${mod.userId})...`);
 		try {
 			const metrics = await fetchAllMetrics(mod.userId, week, year);
-			// container.logger.trace(`[StatsService] [processWeeklyStats] Metrics for ${mod.user.username}: ${JSON.stringify(metrics)}`);
+			container.logger.trace(`[StatsService] [processWeeklyStats] Metrics for ${mod.user.username}: ${JSON.stringify(metrics)}`);
 
 			await prisma.weeklyStat.upsert({
 				where: {
@@ -358,7 +360,9 @@ export async function processWeeklyStats(week: number, year: number) {
 			});
 
 			const result = await getWeeklyRecords(mod.userId, week, year);
-			container.logger.debug(`[StatsService] [processWeeklyStats] Updated stats for ${mod.user.username}. Raw=${result.rawPoints}, Total=${result.totalPoints}`);
+			container.logger.debug(
+				`[StatsService] [processWeeklyStats] Updated stats for ${mod.user.username}. Raw=${result.rawPoints}, Total=${result.totalPoints}`
+			);
 		} catch (error) {
 			container.logger.error(`[StatsService] [processWeeklyStats] Error processing stats for ${mod.user.username} (${mod.userId}):`, error);
 		}
@@ -387,21 +391,52 @@ export async function backfillWeeklyRecords() {
 
 	while (weeksChecked < MAX_BACKFILL_WEEKS) {
 		container.logger.debug(`[StatsService] [backfillWeeklyRecords] Checking Week ${checkWeek}, ${checkYear}...`);
-		const count = await prisma.weeklyStat.count({
+
+		// Determine time range for the week
+		const { startWeek, endWeek } = await getWeekRange(checkWeek, checkYear);
+		const start = getDateFromWeekNumber(startWeek, checkYear, 'start');
+		const end = getDateFromWeekNumber(endWeek, checkYear, 'end');
+		end.setHours(23, 59, 59, 999);
+
+		// 1. Find moderators who took Mod Actions
+		const modActionModeratorIds = await prisma.modAction
+			.findMany({
+				where: {
+					performedAt: { gte: start, lte: end },
+					moderatorId: { not: null }
+				},
+				select: { moderatorId: true },
+				distinct: ['moderatorId']
+			})
+			.then((actions) => actions.map((a) => a.moderatorId!));
+
+		// 2. Find moderators who closed Modmail threads
+		const modmailUserIds = await prisma.modmailThreadClosure
+			.findMany({
+				where: {
+					closedAt: { gte: start, lte: end }
+				},
+				select: { closedByUserId: true },
+				distinct: ['closedByUserId']
+			})
+			.then((closures) => closures.map((c) => c.closedByUserId));
+
+		// 3. Fetch ModeratorProfiles for all these users
+		const moderatorsToProcess = await prisma.moderatorProfile.findMany({
 			where: {
-				year: checkYear,
-				week: checkWeek
-			}
+				OR: [{ id: { in: modActionModeratorIds } }, { userId: { in: modmailUserIds } }]
+			},
+			include: { user: true }
 		});
 
-		if (count > 0) {
-			container.logger.info(`[StatsService] [backfillWeeklyRecords] Found existing records for Week ${checkWeek}, ${checkYear}. Stopping backfill.`);
-			break;
+		if (moderatorsToProcess.length > 0) {
+			container.logger.info(
+				`[StatsService] [backfillWeeklyRecords] Backfilling for Week ${checkWeek}, ${checkYear}. Found ${moderatorsToProcess.length} active/inactive moderators with actions.`
+			);
+			await processWeeklyStats(checkWeek, checkYear, moderatorsToProcess);
+		} else {
+			container.logger.info(`[StatsService] [backfillWeeklyRecords] No actions found for Week ${checkWeek}, ${checkYear}. Skipping.`);
 		}
-
-		container.logger.info(`[StatsService] [backfillWeeklyRecords] Backfilling missing records for Week ${checkWeek}, ${checkYear}...`);
-		await processWeeklyStats(checkWeek, checkYear);
-		container.logger.info(`[StatsService] [backfillWeeklyRecords] Finished backfill for Week ${checkWeek}, ${checkYear}.`);
 
 		// Move to previous week
 		if (checkWeek === 1) {
