@@ -50,7 +50,9 @@ async function fetchSeriesData(url: string, params: Record<string, unknown>): Pr
 async function getStartAndEndTimes(week: number, year: number) {
 	const { startWeek, endWeek } = await getWeekRange(week, year);
 	const start = getDateFromWeekNumber(startWeek, year, 'start').getTime();
-	const end = getDateFromWeekNumber(endWeek, year, 'end').getTime();
+	const endDate = getDateFromWeekNumber(endWeek, year, 'end');
+	endDate.setHours(23, 59, 59, 999);
+	const end = endDate.getTime();
 	return { start, end };
 }
 
