@@ -5,8 +5,12 @@ import { parseModerationEmbed, type ParsedCaseAction } from '../../lib/parsers/c
 import { parseModmailEmbed, type ParsedModmailClosure } from '../../lib/parsers/modmailParser';
 import { getGuild } from '../../lib/utils';
 import { envParseString } from '@skyra/env-utilities';
+import { Stopwatch } from '@sapphire/stopwatch';
 
 export async function upsertModAction(data: ParsedCaseAction, messageId: string, channelId: string) {
+	const stopwatch = new Stopwatch();
+	container.logger.debug(`[SyncService] [upsertModAction] Upserting mod action for message ${messageId}`);
+
 	let moderatorId: string | null = null;
 
 	if (data.performedByUsername) {
@@ -20,7 +24,7 @@ export async function upsertModAction(data: ParsedCaseAction, messageId: string,
 		}
 	}
 
-	return await prisma.modAction.upsert({
+	const result = await prisma.modAction.upsert({
 		where: { messageId },
 		update: {
 			action: data.action,
@@ -39,9 +43,15 @@ export async function upsertModAction(data: ParsedCaseAction, messageId: string,
 			moderatorId
 		}
 	});
+
+	container.logger.debug(`[SyncService] [upsertModAction] Completed. Took ${stopwatch.stop()}`);
+	return result;
 }
 
 export async function upsertModmailClosure(data: ParsedModmailClosure, messageId: string, channelId: string, guildId: string) {
+	const stopwatch = new Stopwatch();
+	container.logger.debug(`[SyncService] [upsertModmailClosure] Upserting modmail closure for message ${messageId}`);
+
 	let approved = false;
 	if (data.closedById) {
 		try {
@@ -53,7 +63,7 @@ export async function upsertModmailClosure(data: ParsedModmailClosure, messageId
 		}
 	}
 
-	return await prisma.modmailThreadClosure.upsert({
+	const result = await prisma.modmailThreadClosure.upsert({
 		where: { messageId },
 		update: {
 			userId: data.userId,
@@ -72,6 +82,9 @@ export async function upsertModmailClosure(data: ParsedModmailClosure, messageId
 			approved
 		}
 	});
+
+	container.logger.debug(`[SyncService] [upsertModmailClosure] Completed. Approved: ${approved}. Took ${stopwatch.stop()}`);
+	return result;
 }
 
 export async function getLatestModmailClosure() {
@@ -113,11 +126,14 @@ async function catchupMessages(
 	processMessage: (message: Message) => Promise<boolean>,
 	typeName: string
 ) {
+	const stopwatch = new Stopwatch();
+	container.logger.info(`[SyncService] [catchupMessages] Starting catch-up for ${typeName} in channel ${channel.id}`);
+
 	const latestProcessed = await getLatestProcessed();
 	const latestMessage = await channel.messages.fetch({ limit: 1 }).then((msgs) => msgs.first());
 
 	if (latestProcessed?.messageId === latestMessage?.id) {
-		container.logger.info(`[Stardust] No new ${typeName} to sync.`);
+		container.logger.info(`[SyncService] [catchupMessages] No new ${typeName} to sync. Took ${stopwatch.stop()}`);
 		return;
 	}
 
@@ -126,8 +142,6 @@ async function catchupMessages(
 	let alreadyHadStreak = 0;
 	const MAX_CONSECUTIVE_ALREADY = 50;
 	const MAX_MESSAGES = 5000;
-
-	container.logger.info(`[Stardust] Starting ${typeName} catch-up...`);
 
 	while (processedCount < MAX_MESSAGES) {
 		const batch: ReturnType<typeof channel.messages.fetch> extends Promise<infer R> ? R : any = await channel.messages
@@ -142,7 +156,7 @@ async function catchupMessages(
 			if (alreadyProcessed) {
 				alreadyHadStreak++;
 				if (alreadyHadStreak >= MAX_CONSECUTIVE_ALREADY) {
-					container.logger.info(`[Stardust] Reached already stored ${typeName} streak; stopping.`);
+					container.logger.info(`[SyncService] [catchupMessages] Reached already stored ${typeName} streak; stopping. Processed ${processedCount} messages. Took ${stopwatch.stop()}`);
 					return;
 				}
 			} else {
@@ -157,33 +171,47 @@ async function catchupMessages(
 		if (!before) break;
 	}
 
-	container.logger.info(`[Stardust] Processed ${processedCount} ${typeName} messages.`);
+	container.logger.info(`[SyncService] [catchupMessages] Completed. Processed ${processedCount} ${typeName} messages. Took ${stopwatch.stop()}`);
 }
 
 export async function syncModActions(channel?: TextBasedChannel) {
+	const stopwatch = new Stopwatch();
+	container.logger.info(`[SyncService] [syncModActions] Initiating sync...`);
+
 	if (!channel) {
 		const serverID = envParseString('MainServer_ID');
 		const channelID = envParseString('MainServer_ModCasesChannelID');
 		const guild = await container.client.guilds.fetch(serverID);
 		const fetchedChannel = await guild.channels.fetch(channelID);
-		if (!fetchedChannel?.isTextBased()) return;
+		if (!fetchedChannel?.isTextBased()) {
+			container.logger.warn(`[SyncService] [syncModActions] Mod cases channel is not text-based or found.`);
+			return;
+		}
 		channel = fetchedChannel as TextBasedChannel;
 	}
 
 	await catchupMessages(channel, getLatestModAction, upsertModActionFromMessage, 'mod actions');
+	container.logger.info(`[SyncService] [syncModActions] Finished sync. Took ${stopwatch.stop()}`);
 }
 
 export async function syncModmail(channel?: TextBasedChannel) {
+	const stopwatch = new Stopwatch();
+	container.logger.info(`[SyncService] [syncModmail] Initiating sync...`);
+
 	if (!channel) {
 		const serverID = envParseString('MainServer_ID');
 		const channelID = envParseString('MainServer_ModMailChannelID');
 		const guild = await container.client.guilds.fetch(serverID);
 		const fetchedChannel = await guild.channels.fetch(channelID);
-		if (!fetchedChannel?.isTextBased()) return;
+		if (!fetchedChannel?.isTextBased()) {
+			container.logger.warn(`[SyncService] [syncModmail] Modmail channel is not text-based or found.`);
+			return;
+		}
 		channel = fetchedChannel as TextBasedChannel;
 	}
 
 	await catchupMessages(channel, getLatestModmailClosure, upsertModmailFromMessage, 'modmail closures');
+	container.logger.info(`[SyncService] [syncModmail] Finished sync. Took ${stopwatch.stop()}`);
 }
 
 async function upsertModActionFromMessage(message: Message) {

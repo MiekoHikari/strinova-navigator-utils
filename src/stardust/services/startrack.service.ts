@@ -2,6 +2,7 @@
 // Handles all interactions related to fetching and updating stardust statistics
 
 import { container } from '@sapphire/framework';
+import { Stopwatch } from '@sapphire/stopwatch';
 import { getDateFromWeekNumber, getWeekRange } from '../lib/utils';
 
 export interface StatBotSeries {
@@ -42,9 +43,20 @@ function appendParamsToUrl(url: string, params: Record<string, unknown>): string
 }
 
 async function fetchSeriesData(url: string, params: Record<string, unknown>): Promise<number> {
-	const response = await container.statBotClient.axios.get(appendParamsToUrl(url, params));
-	const data = response.data as StatBotSeries[];
-	return data.reduce((sum, s) => sum + s.count, 0);
+	const stopwatch = new Stopwatch();
+	const fullUrl = appendParamsToUrl(url, params);
+	container.logger.debug(`[Startrack] [fetchSeriesData] Fetching data from: ${fullUrl}`);
+
+	try {
+		const response = await container.statBotClient.axios.get(fullUrl);
+		const data = response.data as StatBotSeries[];
+		const total = data.reduce((sum, s) => sum + s.count, 0);
+		container.logger.debug(`[Startrack] [fetchSeriesData] Fetched ${data.length} data points. Total count: ${total}. Took ${stopwatch.stop()}`);
+		return total;
+	} catch (error) {
+		container.logger.error(`[Startrack] [fetchSeriesData] Error fetching data from ${fullUrl}:`, error);
+		throw error;
+	}
 }
 
 async function getStartAndEndTimes(week: number, year: number) {
@@ -57,33 +69,48 @@ async function getStartAndEndTimes(week: number, year: number) {
 }
 
 export async function fetchModChatMessageCount(options: ChannelQueryOptions) {
+	const stopwatch = new Stopwatch();
+	container.logger.info(`[Startrack] [fetchModChatMessageCount] Fetching mod chat messages for ${options.moderatorId} (Week ${options.week}, ${options.year})`);
+
 	const { start, end } = await getStartAndEndTimes(options.week, options.year);
 
-	return fetchSeriesData(`/guilds/${options.serverID}/messages/series`, {
+	const result = await fetchSeriesData(`/guilds/${options.serverID}/messages/series`, {
 		start,
 		end,
 		interval: 'week',
 		'whitelist_members[]': [options.moderatorId],
 		'whitelist_channels[]': options.channelIds
 	});
+
+	container.logger.info(`[Startrack] [fetchModChatMessageCount] Completed. Count: ${result}. Took ${stopwatch.stop()}`);
+	return result;
 }
 
 export async function fetchPublicChatMessageCount(options: ChannelQueryOptions) {
+	const stopwatch = new Stopwatch();
+	container.logger.info(`[Startrack] [fetchPublicChatMessageCount] Fetching public chat messages for ${options.moderatorId} (Week ${options.week}, ${options.year})`);
+
 	const { start, end } = await getStartAndEndTimes(options.week, options.year);
 
-	return fetchSeriesData(`/guilds/${options.serverID}/messages/series`, {
+	const result = await fetchSeriesData(`/guilds/${options.serverID}/messages/series`, {
 		start,
 		end,
 		interval: 'week',
 		'whitelist_members[]': [options.moderatorId],
 		'blacklist_channels[]': options.channelIds
 	});
+
+	container.logger.info(`[Startrack] [fetchPublicChatMessageCount] Completed. Count: ${result}. Took ${stopwatch.stop()}`);
+	return result;
 }
 
 export async function fetchVoiceMinutes(options: ChannelQueryOptions) {
+	const stopwatch = new Stopwatch();
+	container.logger.info(`[Startrack] [fetchVoiceMinutes] Fetching voice minutes for ${options.moderatorId} (Week ${options.week}, ${options.year})`);
+
 	const { start, end } = await getStartAndEndTimes(options.week, options.year);
 
-	return fetchSeriesData(`/guilds/${options.serverID}/voice/series`, {
+	const result = await fetchSeriesData(`/guilds/${options.serverID}/voice/series`, {
 		start,
 		end,
 		interval: 'week',
@@ -91,6 +118,9 @@ export async function fetchVoiceMinutes(options: ChannelQueryOptions) {
 		'blacklist_channels[]': options.channelIds,
 		'voice_states[]': ['normal']
 	});
+
+	container.logger.info(`[Startrack] [fetchVoiceMinutes] Completed. Minutes: ${result}. Took ${stopwatch.stop()}`);
+	return result;
 }
 
 export async function fetchAllStatbotMetrics(
@@ -101,6 +131,9 @@ export async function fetchAllStatbotMetrics(
 	modChatChannelIds: string[],
 	modCommandsChannelIds: string[]
 ) {
+	const stopwatch = new Stopwatch();
+	container.logger.info(`[Startrack] [fetchAllStatbotMetrics] Fetching all metrics for ${memberId} (Week ${week}, ${year})`);
+
 	const [modChatMessages, publicChatMessages, voiceChatMinutes] = await Promise.all([
 		fetchModChatMessageCount({ moderatorId: memberId, week, year, serverID, channelIds: modChatChannelIds }),
 		fetchPublicChatMessageCount({
@@ -112,6 +145,8 @@ export async function fetchAllStatbotMetrics(
 		}),
 		fetchVoiceMinutes({ moderatorId: memberId, week, year, serverID, channelIds: modChatChannelIds })
 	]);
+
+	container.logger.info(`[Startrack] [fetchAllStatbotMetrics] Completed. ModChat: ${modChatMessages}, PublicChat: ${publicChatMessages}, Voice: ${voiceChatMinutes}. Took ${stopwatch.stop()}`);
 
 	return {
 		modChatMessages,
