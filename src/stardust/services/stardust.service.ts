@@ -12,6 +12,8 @@ import { parseModmailEmbed, type ParsedModmailClosure } from '../lib/parsers/mod
 import { container } from '@sapphire/framework';
 import { Message, Snowflake, TextBasedChannel } from 'discord.js';
 
+// #region User & Profile Management
+
 export async function ensureUser(userId: string, username: string) {
 	return await prisma.user.upsert({
 		where: { id: userId },
@@ -59,6 +61,17 @@ export async function getModeratorsList() {
 	});
 }
 
+export async function getModeratorProfile(userId: string) {
+	return await prisma.moderatorProfile.findUniqueOrThrow({
+		where: { userId },
+		include: { user: true, weeklyStats: true, modActions: true }
+	});
+}
+
+// #endregion
+
+// #region Metrics & Stats
+
 export async function fetchModActions(memberId: string, week: number, year: number) {
 	const { startWeek, endWeek } = await getWeekRange(week, year);
 	const start = getDateFromWeekNumber(startWeek, year, 'start');
@@ -84,13 +97,6 @@ export async function fetchModmailCases(memberId: string, week: number, year: nu
 			approved: true,
 			closedAt: { gte: start, lte: end }
 		}
-	});
-}
-
-export async function getModeratorProfile(userId: string) {
-	return await prisma.moderatorProfile.findUniqueOrThrow({
-		where: { userId },
-		include: { user: true, weeklyStats: true, modActions: true }
 	});
 }
 
@@ -329,6 +335,99 @@ export async function fetchAllMetrics(memberId: string, week: number, year: numb
 	};
 }
 
+export async function processWeeklyStats(week: number, year: number) {
+	const moderators = await getModeratorsList();
+	container.logger.info(`[Stardust] Processing weekly stats for Week ${week}, ${year} for ${moderators.length} moderators.`);
+
+	for (const mod of moderators) {
+		container.logger.debug(`[Stardust] Fetching metrics for ${mod.user.username} (${mod.userId})...`);
+		const metrics = await fetchAllMetrics(mod.userId, week, year);
+		container.logger.debug(`[Stardust] Metrics for ${mod.user.username}: ${JSON.stringify(metrics)}`);
+
+		await prisma.weeklyStat.upsert({
+			where: {
+				moderatorId_year_week: {
+					moderatorId: mod.id,
+					year,
+					week
+				}
+			},
+			update: {
+				modChatMessages: metrics.modChatMessages,
+				publicChatMessages: metrics.publicChatMessages,
+				voiceChatMinutes: metrics.voiceChatMinutes,
+				modActionsCount: metrics.modActionsTaken,
+				casesHandledCount: metrics.casesHandled,
+				updatedAt: new Date()
+			},
+			create: {
+				moderatorId: mod.id,
+				year,
+				week,
+				modChatMessages: metrics.modChatMessages,
+				publicChatMessages: metrics.publicChatMessages,
+				voiceChatMinutes: metrics.voiceChatMinutes,
+				modActionsCount: metrics.modActionsTaken,
+				casesHandledCount: metrics.casesHandled,
+				rawPoints: 0,
+				totalPoints: 0
+			}
+		});
+
+		const result = await getWeeklyRecords(mod.userId, week, year);
+		container.logger.debug(`[Stardust] Points for ${mod.user.username}: Raw=${result.rawPoints}, Total=${result.totalPoints}`);
+	}
+	container.logger.info(`[Stardust] Completed weekly stats for Week ${week}, ${year}.`);
+}
+
+export async function backfillWeeklyRecords() {
+	const now = new Date();
+	let checkWeek = getISOWeekNumber(now);
+	let checkYear = now.getFullYear();
+
+	// Start from previous week
+	if (checkWeek === 1) {
+		checkYear--;
+		checkWeek = getISOWeekNumber(new Date(checkYear, 11, 28));
+	} else {
+		checkWeek--;
+	}
+
+	const MAX_BACKFILL_WEEKS = 10;
+	let weeksChecked = 0;
+
+	while (weeksChecked < MAX_BACKFILL_WEEKS) {
+		const count = await prisma.weeklyStat.count({
+			where: {
+				year: checkYear,
+				week: checkWeek
+			}
+		});
+
+		if (count > 0) {
+			container.logger.info(`[Stardust] Found existing records for Week ${checkWeek}, ${checkYear}. Stopping backfill.`);
+			break;
+		}
+
+		container.logger.info(`[Stardust] Backfilling missing records for Week ${checkWeek}, ${checkYear}...`);
+		await processWeeklyStats(checkWeek, checkYear);
+		container.logger.info(`[Stardust] Finished backfill for Week ${checkWeek}, ${checkYear}.`);
+
+		// Move to previous week
+		if (checkWeek === 1) {
+			checkYear--;
+			checkWeek = getISOWeekNumber(new Date(checkYear, 11, 28));
+		} else {
+			checkWeek--;
+		}
+		weeksChecked++;
+	}
+}
+
+// #endregion
+
+// #region Sync & Catchup
+
 export async function upsertModAction(data: ParsedCaseAction, messageId: string, channelId: string) {
 	let moderatorId: string | null = null;
 
@@ -423,89 +522,36 @@ export async function checkModActionExists(messageId: string) {
 	return count > 0;
 }
 
-export async function processWeeklyStats(week: number, year: number) {
-	const moderators = await getModeratorsList();
-	container.logger.info(`[Stardust] Processing weekly stats for Week ${week}, ${year} for ${moderators.length} moderators.`);
-
-	for (const mod of moderators) {
-		container.logger.debug(`[Stardust] Fetching metrics for ${mod.user.username} (${mod.userId})...`);
-		const metrics = await fetchAllMetrics(mod.userId, week, year);
-		container.logger.debug(`[Stardust] Metrics for ${mod.user.username}: ${JSON.stringify(metrics)}`);
-
-		await prisma.weeklyStat.upsert({
-			where: {
-				moderatorId_year_week: {
-					moderatorId: mod.id,
-					year,
-					week
-				}
-			},
-			update: {
-				modChatMessages: metrics.modChatMessages,
-				publicChatMessages: metrics.publicChatMessages,
-				voiceChatMinutes: metrics.voiceChatMinutes,
-				modActionsCount: metrics.modActionsTaken,
-				casesHandledCount: metrics.casesHandled,
-				updatedAt: new Date()
-			},
-			create: {
-				moderatorId: mod.id,
-				year,
-				week,
-				modChatMessages: metrics.modChatMessages,
-				publicChatMessages: metrics.publicChatMessages,
-				voiceChatMinutes: metrics.voiceChatMinutes,
-				modActionsCount: metrics.modActionsTaken,
-				casesHandledCount: metrics.casesHandled,
-				rawPoints: 0,
-				totalPoints: 0
-			}
-		});
-
-		const result = await getWeeklyRecords(mod.userId, week, year);
-		container.logger.debug(`[Stardust] Points for ${mod.user.username}: Raw=${result.rawPoints}, Total=${result.totalPoints}`);
-	}
-	container.logger.info(`[Stardust] Completed weekly stats for Week ${week}, ${year}.`);
-}
-
-export async function syncModActions() {
-	const serverID = envParseString('MainServer_ID');
-	const channelID = envParseString('MainServer_ModCasesChannelID');
-	const guild = await container.client.guilds.fetch(serverID);
-	const channel = await guild.channels.fetch(channelID);
-
-	if (!channel?.isTextBased()) return;
-
-	await catchupOnCases(channel);
-}
-
-export async function syncModmail() {
-	const serverID = envParseString('MainServer_ID');
-	const channelID = envParseString('MainServer_ModMailChannelID');
-	const guild = await container.client.guilds.fetch(serverID);
-	const channel = await guild.channels.fetch(channelID);
-
-	if (!channel?.isTextBased()) return;
-
-	await catchupOnModmail(channel);
-}
-
-async function catchupOnCases(channel: TextBasedChannel) {
-	const latestCase = await getLatestModAction();
+/**
+ * Generic function to catch up on messages in a channel.
+ * @param channel The channel to sync messages from.
+ * @param getLatestProcessed Function to get the ID of the last processed message.
+ * @param processMessage Function to process each message. Returns true if the message was already processed or should be skipped (adds to "streak"), false if it was a new valid entry.
+ * @param typeName Name of the data type being synced (for logging).
+ */
+async function catchupMessages(
+	channel: TextBasedChannel,
+	getLatestProcessed: () => Promise<{ messageId: string } | null>,
+	processMessage: (message: Message) => Promise<boolean>,
+	typeName: string
+) {
+	const latestProcessed = await getLatestProcessed();
 	const latestMessage = await channel.messages.fetch({ limit: 1 }).then((msgs) => msgs.first());
 
-	if (latestCase?.messageId === latestMessage?.id) {
-		container.logger.info('[Stardust] No new mod actions');
+	if (latestProcessed?.messageId === latestMessage?.id) {
+		container.logger.info(`[Stardust] No new ${typeName} to sync.`);
 		return;
 	}
 
 	let before: Snowflake | undefined = undefined;
-	let processed = 0;
+	let processedCount = 0;
 	let alreadyHadStreak = 0;
 	const MAX_CONSECUTIVE_ALREADY = 50;
 	const MAX_MESSAGES = 5000;
 
-	while (processed < MAX_MESSAGES) {
+	container.logger.info(`[Stardust] Starting ${typeName} catch-up...`);
+
+	while (processedCount < MAX_MESSAGES) {
 		const batch: ReturnType<typeof channel.messages.fetch> extends Promise<infer R> ? R : any = await channel.messages
 			.fetch({ limit: 100, before })
 			.catch(() => null as any);
@@ -513,12 +559,12 @@ async function catchupOnCases(channel: TextBasedChannel) {
 		if (!batch || batch.size === 0) break;
 
 		for (const msg of batch.values()) {
-			const had = await upsertModActionFromMessage(msg);
+			const alreadyProcessed = await processMessage(msg);
 
-			if (had) {
+			if (alreadyProcessed) {
 				alreadyHadStreak++;
 				if (alreadyHadStreak >= MAX_CONSECUTIVE_ALREADY) {
-					container.logger.info('[Stardust] Reached already stored messages streak; stopping.');
+					container.logger.info(`[Stardust] Reached already stored ${typeName} streak; stopping.`);
 					return;
 				}
 			} else {
@@ -526,60 +572,40 @@ async function catchupOnCases(channel: TextBasedChannel) {
 			}
 		}
 
-		processed += batch.size;
+		processedCount += batch.size;
 		before = batch.lastKey();
 
 		await new Promise((resolve) => setTimeout(resolve, 500));
 		if (!before) break;
 	}
 
-	container.logger.info(`[Stardust] Processed ${processed} messages`);
+	container.logger.info(`[Stardust] Processed ${processedCount} ${typeName} messages.`);
 }
 
-async function catchupOnModmail(channel: TextBasedChannel) {
-	const latestClosure = await getLatestModmailClosure();
-	const latestMessage = await channel.messages.fetch({ limit: 1 }).then((msgs) => msgs.first());
-
-	if (latestClosure?.messageId === latestMessage?.id) {
-		container.logger.info('[Stardust] No new modmail closures');
-		return;
+export async function syncModActions(channel?: TextBasedChannel) {
+	if (!channel) {
+		const serverID = envParseString('MainServer_ID');
+		const channelID = envParseString('MainServer_ModCasesChannelID');
+		const guild = await container.client.guilds.fetch(serverID);
+		const fetchedChannel = await guild.channels.fetch(channelID);
+		if (!fetchedChannel?.isTextBased()) return;
+		channel = fetchedChannel as TextBasedChannel;
 	}
 
-	let before: Snowflake | undefined = undefined;
-	let processed = 0;
-	let alreadyHadStreak = 0;
-	const MAX_CONSECUTIVE_ALREADY = 50;
-	const MAX_MESSAGES = 5000;
+	await catchupMessages(channel, getLatestModAction, upsertModActionFromMessage, 'mod actions');
+}
 
-	while (processed < MAX_MESSAGES) {
-		const batch: ReturnType<typeof channel.messages.fetch> extends Promise<infer R> ? R : any = await channel.messages
-			.fetch({ limit: 100, before })
-			.catch(() => null as any);
-
-		if (!batch || batch.size === 0) break;
-
-		for (const msg of batch.values()) {
-			const had = await upsertModmailFromMessage(msg);
-
-			if (had) {
-				alreadyHadStreak++;
-				if (alreadyHadStreak >= MAX_CONSECUTIVE_ALREADY) {
-					container.logger.info('[Stardust] Reached already stored modmail streak; stopping.');
-					return;
-				}
-			} else {
-				alreadyHadStreak = 0;
-			}
-		}
-
-		processed += batch.size;
-		before = batch.lastKey();
-
-		await new Promise((resolve) => setTimeout(resolve, 500));
-		if (!before) break;
+export async function syncModmail(channel?: TextBasedChannel) {
+	if (!channel) {
+		const serverID = envParseString('MainServer_ID');
+		const channelID = envParseString('MainServer_ModMailChannelID');
+		const guild = await container.client.guilds.fetch(serverID);
+		const fetchedChannel = await guild.channels.fetch(channelID);
+		if (!fetchedChannel?.isTextBased()) return;
+		channel = fetchedChannel as TextBasedChannel;
 	}
 
-	container.logger.info(`[Stardust] Processed ${processed} modmail messages`);
+	await catchupMessages(channel, getLatestModmailClosure, upsertModmailFromMessage, 'modmail closures');
 }
 
 async function upsertModActionFromMessage(message: Message) {
@@ -614,46 +640,4 @@ async function upsertModmailFromMessage(message: Message) {
 	return false;
 }
 
-export async function backfillWeeklyRecords() {
-	const now = new Date();
-	let checkWeek = getISOWeekNumber(now);
-	let checkYear = now.getFullYear();
-
-	// Start from previous week
-	if (checkWeek === 1) {
-		checkYear--;
-		checkWeek = getISOWeekNumber(new Date(checkYear, 11, 28));
-	} else {
-		checkWeek--;
-	}
-
-	const MAX_BACKFILL_WEEKS = 10;
-	let weeksChecked = 0;
-
-	while (weeksChecked < MAX_BACKFILL_WEEKS) {
-		const count = await prisma.weeklyStat.count({
-			where: {
-				year: checkYear,
-				week: checkWeek
-			}
-		});
-
-		if (count > 0) {
-			container.logger.info(`[Stardust] Found existing records for Week ${checkWeek}, ${checkYear}. Stopping backfill.`);
-			break;
-		}
-
-		container.logger.info(`[Stardust] Backfilling missing records for Week ${checkWeek}, ${checkYear}...`);
-		await processWeeklyStats(checkWeek, checkYear);
-		container.logger.info(`[Stardust] Finished backfill for Week ${checkWeek}, ${checkYear}.`);
-
-		// Move to previous week
-		if (checkWeek === 1) {
-			checkYear--;
-			checkWeek = getISOWeekNumber(new Date(checkYear, 11, 28));
-		} else {
-			checkWeek--;
-		}
-		weeksChecked++;
-	}
-}
+// #endregion

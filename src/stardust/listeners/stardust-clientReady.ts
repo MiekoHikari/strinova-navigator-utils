@@ -13,9 +13,12 @@ export class StardustReady extends Listener {
 		const fetched = await this.fetchChannelsAndGuilds();
 		if (!fetched) return this.container.logger.warn('[Stardust] Failed to fetch necessary guild or channels.');
 
+		const { casesChannel, modmailChannel } = fetched;
+
 		// Catch up with missed mod actions and modmails since bot downtime
-		await syncModActions();
-		await syncModmail();
+		await syncModActions(casesChannel);
+		if (modmailChannel) await syncModmail(modmailChannel);
+
 		await backfillWeeklyRecords();
 
 		this.container.logger.info('[Stardust] Completed catch-up of mod actions and modmail.');
