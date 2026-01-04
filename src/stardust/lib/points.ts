@@ -1,3 +1,8 @@
+import { WeeklyStat } from '@prisma/client';
+import { container } from '@sapphire/framework';
+import { Stopwatch } from '@sapphire/stopwatch';
+import { prisma } from '_core/lib/prisma';
+
 export type ActivityWeightClass = 'HIGH' | 'MEDIUM' | 'LOW';
 
 // Weight class budgets (fractions of max possible)
@@ -14,13 +19,6 @@ export const CATEGORY_CONFIG = {
 	modActionsTaken: { weightClass: 'HIGH' as ActivityWeightClass, pointsPerUnit: 10 },
 	casesHandled: { weightClass: 'HIGH' as ActivityWeightClass, pointsPerUnit: 20 }
 };
-
-export const TIER_PAYOUT = {
-	0: 0,
-	1: 600,
-	2: 1200,
-	3: 1800
-} as const;
 
 export interface IndividualMetrics {
 	stardusts: number;
@@ -49,7 +47,7 @@ export interface ComputedPointsResult {
 	dynamicMaxPossible: number;
 }
 
-export function computeWeightedPoints(metrics: Omit<IndividualMetrics, 'stardusts'>): ComputedPointsResult & { dynamicMaxPossible: number } {
+export function computeWeightedPoints(metrics: Omit<IndividualMetrics, 'stardusts'>): ComputedPointsResult {
 	const categories = Object.keys(CATEGORY_CONFIG) as Array<keyof typeof CATEGORY_CONFIG>;
 
 	let dynamicMaxPossible = 0;
@@ -100,4 +98,35 @@ export function computeWeightedPoints(metrics: Omit<IndividualMetrics, 'stardust
 	}
 
 	return { details, totalRawPoints: dynamicMaxPossible, totalFinalizedPoints, totalWastedPoints, dynamicMaxPossible };
+}
+
+export async function computeWeeklyPointsAndUpdate(weeklyStat: WeeklyStat) {
+	const stopwatch = new Stopwatch();
+
+	const points = computeWeightedPoints({
+		modChatMessages: weeklyStat.modChatMessages,
+		publicChatMessages: weeklyStat.publicChatMessages,
+		voiceChatMinutes: weeklyStat.voiceChatMinutes,
+		modActionsTaken: weeklyStat.modActionsCount,
+		casesHandled: weeklyStat.casesHandledCount
+	});
+
+	const result = await prisma.weeklyStat.update({
+		where: {
+			moderatorId_year_week: {
+				moderatorId: weeklyStat.moderatorId,
+				year: weeklyStat.year,
+				week: weeklyStat.week
+			}
+		},
+		data: {
+			rawPoints: points.totalRawPoints,
+			totalPoints: points.totalFinalizedPoints,
+			updatedAt: new Date()
+		},
+		include: { moderator: { include: { user: true } } }
+	});
+
+	container.logger.trace(`[StatsService] [computeWeeklyPointsAndUpdate] Completed. Took ${stopwatch.stop()}`);
+	return result;
 }

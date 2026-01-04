@@ -67,14 +67,8 @@ async function getStartAndEndTimes(week: number, year: number) {
 
 export async function fetchModChatMessageCount(options: ChannelQueryOptions) {
 	const stopwatch = new Stopwatch();
-	container.logger.info(
-		`[Startrack] [fetchModChatMessageCount] Fetching mod chat messages for ${options.moderatorId} (Week ${options.week}, ${options.year})`
-	);
 
 	const { start, end } = await getStartAndEndTimes(options.week, options.year);
-	container.logger.debug(
-		`[Startrack] [fetchModChatMessageCount] Calculated start: ${new Date(start).toISOString()}, end: ${new Date(end).toISOString()}`
-	);
 
 	const result = await fetchSeriesData(`/guilds/${options.serverID}/messages/series`, {
 		start,
@@ -90,9 +84,6 @@ export async function fetchModChatMessageCount(options: ChannelQueryOptions) {
 
 export async function fetchPublicChatMessageCount(options: ChannelQueryOptions) {
 	const stopwatch = new Stopwatch();
-	container.logger.info(
-		`[Startrack] [fetchPublicChatMessageCount] Fetching public chat messages for ${options.moderatorId} (Week ${options.week}, ${options.year})`
-	);
 
 	const { start, end } = await getStartAndEndTimes(options.week, options.year);
 
@@ -110,9 +101,6 @@ export async function fetchPublicChatMessageCount(options: ChannelQueryOptions) 
 
 export async function fetchVoiceMinutes(options: ChannelQueryOptions) {
 	const stopwatch = new Stopwatch();
-	container.logger.info(
-		`[Startrack] [fetchVoiceMinutes] Fetching voice minutes for ${options.moderatorId} (Week ${options.week}, ${options.year})`
-	);
 
 	const { start, end } = await getStartAndEndTimes(options.week, options.year);
 
@@ -138,7 +126,6 @@ export async function fetchAllStatbotMetrics(
 	modCommandsChannelIds: string[]
 ) {
 	const stopwatch = new Stopwatch();
-	container.logger.info(`[Startrack] [fetchAllStatbotMetrics] Fetching all metrics for ${memberId} (Week ${week}, ${year})`);
 
 	const [modChatMessages, publicChatMessages, voiceChatMinutes] = await Promise.all([
 		fetchModChatMessageCount({ moderatorId: memberId, week, year, serverID, channelIds: modChatChannelIds }),

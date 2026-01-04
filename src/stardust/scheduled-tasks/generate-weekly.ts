@@ -1,8 +1,8 @@
 import { ScheduledTask } from '@sapphire/plugin-scheduled-tasks';
 import { syncModActions, syncModmail } from '../services/stardust/sync.service';
 import { processWeeklyStats } from '../services/stardust/stats.service';
+import { adjustModeratorTiers } from '../services/stardust/tier.service';
 import { getISOWeekNumber } from '../lib/utils';
-import { envParseString } from '@skyra/env-utilities';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 import { prisma } from '../../_core/lib/prisma';
 
@@ -32,6 +32,7 @@ export class GenerateWeeklyReport extends ScheduledTask {
 		this.container.logger.info(`[Stardust] Generating report for Week ${week}, ${year}`);
 
 		await processWeeklyStats(week, year);
+		await adjustModeratorTiers(week, year);
 
 		// Fetch stats
 		const stats = await prisma.weeklyStat.findMany({
@@ -55,22 +56,11 @@ export class GenerateWeeklyReport extends ScheduledTask {
 		const csvBuffer = Buffer.from(csvHeader + csvRows);
 		const attachment = new AttachmentBuilder(csvBuffer, { name: `weekly-report-${year}-${week}.csv` });
 
-		// Generate Embed
-		const embed = new EmbedBuilder()
-			.setTitle(`Weekly Report - Week ${week}, ${year}`)
-			.setDescription(`Stats for ${stats.length} moderators.`)
-			.setColor('Blue')
-			.setTimestamp();
-
-		// Send to channel
-		const channelId = envParseString('MainServer_WeeklyReportChannelID');
-		const guildId = envParseString('MainServer_ID');
-		const guild = await this.container.client.guilds.fetch(guildId);
-		const channel = await guild.channels.fetch(channelId);
-
-		if (channel?.isTextBased()) {
-			await channel.send({ embeds: [embed], files: [attachment] });
-		}
+		const logger = this.container.utilities.guildLogger.getLogger();
+		logger.log({
+			files: [attachment],
+			embeds: [new EmbedBuilder().setTitle(`Weekly Moderator Report - Week ${week}, ${year}`).setColor('Blue')]
+		});
 
 		this.container.logger.info('[Stardust] Weekly report sent.');
 	}

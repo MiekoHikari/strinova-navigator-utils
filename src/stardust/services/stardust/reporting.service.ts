@@ -3,7 +3,7 @@ import { getWeekRange } from '../../lib/utils';
 import { MonthlyStat, WeeklyStat } from '@prisma/client';
 import { container } from '@sapphire/framework';
 import { Stopwatch } from '@sapphire/stopwatch';
-import { computeWeeklyPointsAndUpdate } from './stats.service';
+import { computeWeeklyPointsAndUpdate } from 'stardust/lib/points';
 
 export async function getCurrentMonthPoints(userId: string, month: number, year: number) {
 	const stopwatch = new Stopwatch();
@@ -216,7 +216,9 @@ export async function getMonthlyReport(month: number, year: number) {
 	// Compile report data
 	const totalStats = calculateTotalStats(stats);
 
-	container.logger.info(`[ReportingService] [getMonthlyReport] Completed. Generated stats for ${stats.length} moderators. Took ${stopwatch.stop()}`);
+	container.logger.info(
+		`[ReportingService] [getMonthlyReport] Completed. Generated stats for ${stats.length} moderators. Took ${stopwatch.stop()}`
+	);
 	return { stats, totalStats };
 }
 

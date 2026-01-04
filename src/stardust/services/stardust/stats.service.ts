@@ -1,43 +1,11 @@
 import { prisma } from '../../../_core/lib/prisma';
 import { getDateFromWeekNumber, getISOWeekNumber, getLastWeek } from '../../lib/utils';
-import { computeWeightedPoints } from '../../lib/points';
-import { WeeklyStat, ModeratorProfile, User } from '@prisma/client';
+import { ModeratorProfile, User } from '@prisma/client';
 import { container } from '@sapphire/framework';
 import { Stopwatch } from '@sapphire/stopwatch';
 import { getModeratorsList } from './profile.service';
 import { fetchAllMetrics } from './metrics.service';
-
-export async function computeWeeklyPointsAndUpdate(weeklyStat: WeeklyStat) {
-	const stopwatch = new Stopwatch();
-	container.logger.trace(`[StatsService] [computeWeeklyPointsAndUpdate] Computing points for Week ${weeklyStat.week}, ${weeklyStat.year}`);
-
-	const points = computeWeightedPoints({
-		modChatMessages: weeklyStat.modChatMessages,
-		publicChatMessages: weeklyStat.publicChatMessages,
-		voiceChatMinutes: weeklyStat.voiceChatMinutes,
-		modActionsTaken: weeklyStat.modActionsCount,
-		casesHandled: weeklyStat.casesHandledCount
-	});
-
-	const result = await prisma.weeklyStat.update({
-		where: {
-			moderatorId_year_week: {
-				moderatorId: weeklyStat.moderatorId,
-				year: weeklyStat.year,
-				week: weeklyStat.week
-			}
-		},
-		data: {
-			rawPoints: points.totalRawPoints,
-			totalPoints: points.totalFinalizedPoints,
-			updatedAt: new Date()
-		},
-		include: { moderator: { include: { user: true } } }
-	});
-
-	container.logger.trace(`[StatsService] [computeWeeklyPointsAndUpdate] Completed. Took ${stopwatch.stop()}`);
-	return result;
-}
+import { computeWeeklyPointsAndUpdate } from '../../lib/points';
 
 export async function processWeeklyStats(week: number, year: number, explicitModerators?: (ModeratorProfile & { user: User })[]) {
 	const stopwatch = new Stopwatch();
@@ -50,7 +18,6 @@ export async function processWeeklyStats(week: number, year: number, explicitMod
 		container.logger.debug(`[StatsService] [processWeeklyStats] Processing metrics for ${mod.user.username} (${mod.id})...`);
 		try {
 			const metrics = await fetchAllMetrics(mod.id, week, year);
-			container.logger.trace(`[StatsService] [processWeeklyStats] Metrics for ${mod.user.username} have been fetched.`);
 
 			const upsertedStat = await prisma.weeklyStat.upsert({
 				where: {
@@ -92,6 +59,7 @@ export async function processWeeklyStats(week: number, year: number, explicitMod
 			container.logger.error(`[StatsService] [processWeeklyStats] Error processing stats for ${mod.user.username} (${mod.id}):`, error);
 		}
 	}
+
 	container.logger.info(`[StatsService] [processWeeklyStats] Completed processing for Week ${week}, ${year}. Took ${stopwatch.stop()}`);
 }
 

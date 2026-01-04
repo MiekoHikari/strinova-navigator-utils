@@ -7,6 +7,7 @@ import '@sapphire/plugin-editable-commands/register';
 import '@sapphire/plugin-logger/register';
 import '@sapphire/plugin-subcommands/register';
 import '@sapphire/plugin-scheduled-tasks/register';
+import '@sapphire/plugin-utilities-store/register';
 import { envParseString, setup } from '@skyra/env-utilities';
 import * as colorette from 'colorette';
 import { join } from 'path';
@@ -40,8 +41,7 @@ declare module '@skyra/env-utilities' {
 		MainServer_ModMailChannelID: string;
 		MainServer_ApprovalChannelID: string;
 		MainServer_PointsLogChannelID: string;
-		MainServer_WeeklyReportChannelID: string;
-		MainServer_MonthlyReportChannelID: string;
+		MainServer_StardustLogChannelID: string;
 		Statbot_Key: string;
 		DATABASE_URL: string;
 	}

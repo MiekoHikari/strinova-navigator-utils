@@ -96,6 +96,7 @@ export class StrinovaSapphireClient extends SapphireClient {
 
 		this.logger.info('Sapphire Client logged in!');
 
+		await this.utilities.guildLogger.addLogger(process.env.MainServer_ID!, process.env.MainServer_StardustLogChannelID);
 		return loggedInToken;
 	}
 }

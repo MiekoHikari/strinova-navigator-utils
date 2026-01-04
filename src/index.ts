@@ -15,7 +15,8 @@ const client = new StrinovaSapphireClient(
 			IntentsBitField.Flags.GuildMessages,
 			IntentsBitField.Flags.GuildModeration,
 			IntentsBitField.Flags.MessageContent,
-			IntentsBitField.Flags.GuildVoiceStates
+			IntentsBitField.Flags.GuildVoiceStates,
+			IntentsBitField.Flags.GuildMembers
 		],
 		partials: [Partials.Message, Partials.Channel, Partials.User, Partials.GuildMember],
 		tasks: {

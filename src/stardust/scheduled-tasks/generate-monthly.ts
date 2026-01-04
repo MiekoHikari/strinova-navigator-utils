@@ -1,14 +1,13 @@
 import { ScheduledTask } from '@sapphire/plugin-scheduled-tasks';
 import { syncModActions, syncModmail } from '../services/stardust/sync.service';
 import { getMonthlyReport } from '../services/stardust/reporting.service';
-import { envParseString } from '@skyra/env-utilities';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 
 export class GenerateMonthlyReport extends ScheduledTask {
 	public constructor(context: ScheduledTask.LoaderContext, options: ScheduledTask.Options) {
 		super(context, {
 			...options,
-			pattern: '5 0 1 * *', // 1st of every month at 00:05 AM
+			pattern: '30 0 1 * *', // 1st of every month at 00:30 AM
 			timezone: 'UTC',
 			name: 'generateMonthlyReport'
 		});
@@ -59,15 +58,11 @@ export class GenerateMonthlyReport extends ScheduledTask {
 			.setColor('Gold')
 			.setTimestamp();
 
-		// Send to channel
-		const channelId = envParseString('MainServer_MonthlyReportChannelID');
-		const guildId = envParseString('MainServer_ID');
-		const guild = await this.container.client.guilds.fetch(guildId);
-		const channel = await guild.channels.fetch(channelId);
-
-		if (channel?.isTextBased()) {
-			await channel.send({ embeds: [embed], files: [attachment] });
-		}
+		const logger = this.container.utilities.guildLogger.getLogger();
+		await logger.log({
+			files: [attachment],
+			embeds: [embed]
+		});
 
 		this.container.logger.info('[Stardust] Monthly report sent.');
 	}

@@ -44,6 +44,9 @@ importers:
       '@sapphire/plugin-subcommands':
         specifier: ^7.0.1
         version: 7.0.1
+      '@sapphire/plugin-utilities-store':
+        specifier: ^2.0.3
+        version: 2.0.3
       '@sapphire/time-utilities':
         specifier: ^1.7.14
         version: 1.7.14
@@ -69,7 +72,7 @@ importers:
         specifier: ^4.1.0
         version: 4.1.0
       discord.js:
-        specifier: ^14.17.3
+        specifier: ^14.25.1
         version: 14.25.1
       dotenv:
         specifier: ^17.2.3
@@ -497,6 +500,10 @@ packages:
 
   '@sapphire/plugin-subcommands@7.0.1':
     resolution: {integrity: sha512-3ngUpfKfcMX4zIlJ4SHLe10N79XU72H+Wdfcnd9ueMf6FOSMJFvVUfqDIp1rb7/iXi7C5dfx0pQqSwqu3UG0KQ==}
+    engines: {node: '>=v18', npm: '>=7'}
+
+  '@sapphire/plugin-utilities-store@2.0.3':
+    resolution: {integrity: sha512-L/C7cdk2q+Yrbrq6xWNoDlb4Pb4SIoULJpFNMO4TXFJV6ldXBmQWF3A0mW1l7CGc6GiiOCCMEXbteYFFnqRo7Q==}
     engines: {node: '>=v18', npm: '>=7'}
 
   '@sapphire/prettier-config@2.0.0':
@@ -2471,6 +2478,8 @@ snapshots:
   '@sapphire/plugin-subcommands@7.0.1':
     dependencies:
       '@sapphire/utilities': 3.18.2
+
+  '@sapphire/plugin-utilities-store@2.0.3': {}
 
   '@sapphire/prettier-config@2.0.0':
     dependencies:
