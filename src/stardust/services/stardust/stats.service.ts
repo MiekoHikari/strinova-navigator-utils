@@ -1,5 +1,5 @@
 import { prisma } from '../../../_core/lib/prisma';
-import { getDateFromWeekNumber, getISOWeekNumber } from '../../lib/utils';
+import { getDateFromWeekNumber, getISOWeekNumber, getLastWeek } from '../../lib/utils';
 import { computeWeightedPoints } from '../../lib/points';
 import { WeeklyStat, ModeratorProfile, User } from '@prisma/client';
 import { container } from '@sapphire/framework';
@@ -95,97 +95,97 @@ export async function processWeeklyStats(week: number, year: number, explicitMod
 	container.logger.info(`[StatsService] [processWeeklyStats] Completed processing for Week ${week}, ${year}. Took ${stopwatch.stop()}`);
 }
 
+async function isBackfillNeeded(currentWeek: number, currentYear: number): Promise<boolean> {
+	const lastPersistedStat = await prisma.weeklyStat.findFirst({
+		orderBy: [{ year: 'desc' }, { week: 'desc' }]
+	});
+
+	const isUpToDate = lastPersistedStat ? lastPersistedStat.week === currentWeek && lastPersistedStat.year === currentYear : false;
+
+	return !isUpToDate;
+}
+
+async function getModeratorsWithActivity(start: Date, end: Date) {
+	const modActionModeratorIds = await prisma.modAction
+		.findMany({
+			where: {
+				performedAt: { gte: start, lte: end },
+				moderatorId: { not: null }
+			},
+			select: { moderatorId: true },
+			distinct: ['moderatorId']
+		})
+		.then((actions) => actions.map((a) => a.moderatorId!));
+
+	const modmailUserIds = await prisma.modmailThreadClosure
+		.findMany({
+			where: {
+				closedAt: { gte: start, lte: end }
+			},
+			select: { closedByUserId: true },
+			distinct: ['closedByUserId']
+		})
+		.then((closures) => closures.map((c) => c.closedByUserId));
+
+	return { modActionModeratorIds, modmailUserIds };
+}
+
+async function processBackfillForWeek(week: number, year: number) {
+	container.logger.debug(`[StatsService] [backfillWeeklyRecords] Checking Week ${week}, ${year}...`);
+
+	const start = getDateFromWeekNumber(week, year, 'start');
+	const end = getDateFromWeekNumber(week, year, 'end');
+
+	const { modActionModeratorIds, modmailUserIds } = await getModeratorsWithActivity(start, end);
+
+	const moderatorsToProcess = await prisma.moderatorProfile.findMany({
+		where: {
+			OR: [{ id: { in: modActionModeratorIds } }, { id: { in: modmailUserIds } }, { active: true }]
+		},
+		include: { user: true }
+	});
+
+	if (moderatorsToProcess.length > 0) {
+		container.logger.info(
+			`[StatsService] [backfillWeeklyRecords] Backfilling for Week ${week}, ${year}. Found ${moderatorsToProcess.length} active/inactive moderators with actions.`
+		);
+
+		await processWeeklyStats(week, year, moderatorsToProcess);
+	} else {
+		container.logger.info(`[StatsService] [backfillWeeklyRecords] No actions found for Week ${week}, ${year}. Skipping.`);
+	}
+}
+
 export async function backfillWeeklyRecords() {
 	const stopwatch = new Stopwatch();
 	container.logger.info(`[StatsService] [backfillWeeklyRecords] Starting backfill process...`);
 
 	const now = new Date();
-	let checkWeek = getISOWeekNumber(now);
-	let checkYear = now.getFullYear();
 
-	// If last persisted week is last week, skip it
+	let { week, year } = getLastWeek(getISOWeekNumber(now), now.getFullYear());
 
-	const lastPersisted = await prisma.weeklyStat
-		.findFirst({
-			orderBy: [{ year: 'desc' }, { week: 'desc' }]
-		})
-		.then((stat) => (stat ? checkWeek === stat.week && checkYear === stat.year : false));
-
-	if (lastPersisted) {
-		container.logger.info(
-			`[StatsService] [backfillWeeklyRecords] Last persisted week (${checkWeek}, ${checkYear}) is the most recent week. Skipping backfill`
-		);
-
-		return;
-	}
-
-	// Start from previous week
-	if (checkWeek === 1) {
-		checkYear--;
-		checkWeek = getISOWeekNumber(new Date(checkYear, 11, 28));
-	} else {
-		checkWeek--;
-	}
-
-	const MAX_BACKFILL_WEEKS = 4;
+	const shouldBackfill = await isBackfillNeeded(week, year);
 	let weeksChecked = 0;
 
-	while (weeksChecked < MAX_BACKFILL_WEEKS) {
-		container.logger.debug(`[StatsService] [backfillWeeklyRecords] Checking Week ${checkWeek}, ${checkYear}...`);
+	if (!shouldBackfill) {
+		container.logger.info(
+			`[StatsService] [backfillWeeklyRecords] Last persisted week (${week}, ${year}) is the most recent week. Skipping backfill`
+		);
+	} else {
+		const MAX_BACKFILL_WEEKS = 4;
 
-		// Determine time range for the week
-		const start = getDateFromWeekNumber(checkWeek, checkYear, 'start');
-		const end = getDateFromWeekNumber(checkWeek, checkYear, 'end');
+		while (weeksChecked < MAX_BACKFILL_WEEKS) {
+			await processBackfillForWeek(week, year);
 
-		// 1. Find moderators who took Mod Actions
-		const modActionModeratorIds = await prisma.modAction
-			.findMany({
-				where: {
-					performedAt: { gte: start, lte: end },
-					moderatorId: { not: null }
-				},
-				select: { moderatorId: true },
-				distinct: ['moderatorId']
-			})
-			.then((actions) => actions.map((a) => a.moderatorId!));
-
-		// 2. Find moderators who closed Modmail threads
-		const modmailUserIds = await prisma.modmailThreadClosure
-			.findMany({
-				where: {
-					closedAt: { gte: start, lte: end }
-				},
-				select: { closedByUserId: true },
-				distinct: ['closedByUserId']
-			})
-			.then((closures) => closures.map((c) => c.closedByUserId));
-
-		// 3. Fetch ModeratorProfiles for all these users
-		const moderatorsToProcess = await prisma.moderatorProfile.findMany({
-			where: {
-				OR: [{ id: { in: modActionModeratorIds } }, { id: { in: modmailUserIds } }, { active: true }]
-			},
-			include: { user: true }
-		});
-
-		if (moderatorsToProcess.length > 0) {
-			container.logger.info(
-				`[StatsService] [backfillWeeklyRecords] Backfilling for Week ${checkWeek}, ${checkYear}. Found ${moderatorsToProcess.length} active/inactive moderators with actions.`
-			);
-
-			await processWeeklyStats(checkWeek, checkYear, moderatorsToProcess);
-		} else {
-			container.logger.info(`[StatsService] [backfillWeeklyRecords] No actions found for Week ${checkWeek}, ${checkYear}. Skipping.`);
+			// Move to previous week
+			if (week === 1) {
+				year--;
+				week = getISOWeekNumber(new Date(year, 11, 28));
+			} else {
+				week--;
+			}
+			weeksChecked++;
 		}
-
-		// Move to previous week
-		if (checkWeek === 1) {
-			checkYear--;
-			checkWeek = getISOWeekNumber(new Date(checkYear, 11, 28));
-		} else {
-			checkWeek--;
-		}
-		weeksChecked++;
 	}
 
 	container.logger.info(`[StatsService] [backfillWeeklyRecords] Completed. Checked ${weeksChecked} weeks. Took ${stopwatch.stop()}`);

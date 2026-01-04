@@ -26,6 +26,17 @@ export function getISOWeekNumber(date: Date) {
 	return Math.ceil(((tempDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 
+export function getLastWeek(week: number, year: number) {
+	if (week === 1) {
+		year--;
+		week = getISOWeekNumber(new Date(year, 11, 28));
+	} else {
+		week--;
+	}
+
+	return { week, year };
+}
+
 export function getDateFromWeekNumber(week: number, year: number, type: 'start' | 'end'): Date {
 	const firstDayOfYear = new Date(year, 0, 1);
 	const daysOffset = (week - 1) * 7;
