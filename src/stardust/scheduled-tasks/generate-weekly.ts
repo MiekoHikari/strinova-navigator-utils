@@ -57,9 +57,23 @@ export class GenerateWeeklyReport extends ScheduledTask {
 		const attachment = new AttachmentBuilder(csvBuffer, { name: `weekly-report-${year}-${week}.csv` });
 
 		const logger = this.container.utilities.guildLogger.getLogger();
+
+		const totalPoints = stats.reduce((acc, s) => acc + s.totalPoints, 0);
+		const averagePoints = (totalPoints / stats.length).toFixed(2);
+
 		logger.log({
 			files: [attachment],
-			embeds: [new EmbedBuilder().setTitle(`Weekly Moderator Report - Week ${week}, ${year}`).setColor('Blue')]
+			embeds: [
+				new EmbedBuilder()
+					.setTitle(`Weekly Moderator Report - Week ${week}, ${year}`)
+					.setColor('Blue')
+					.setDescription('Detailed individual weekly report can be found by running the `/stardust read weekly` command.')
+					.addFields([
+						{ name: 'Total Moderators', value: `${stats.length}`, inline: true },
+						{ name: 'Total Points Awarded', value: `${totalPoints}`, inline: true },
+						{ name: 'Average Points per Moderator', value: `${averagePoints}`, inline: true }
+					])
+			]
 		});
 
 		this.container.logger.info('[Stardust] Weekly report sent.');
