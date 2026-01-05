@@ -1,11 +1,12 @@
 import { prisma } from '../../../_core/lib/prisma';
-import { getDateFromWeekNumber, getISOWeekNumber, getLastWeek } from '../../lib/utils';
+import { getDateFromWeekNumber, getISOWeekNumber, getLastWeek, getGuild, getChannelsInCategory } from '../../lib/utils';
 import { ModeratorProfile, User } from '@prisma/client';
 import { container } from '@sapphire/framework';
 import { Stopwatch } from '@sapphire/stopwatch';
 import { getModeratorsList } from './profile.service';
-import { fetchAllMetrics } from './metrics.service';
 import { computeWeeklyPointsAndUpdate } from '../../lib/points';
+import { envParseString } from '@skyra/env-utilities';
+import * as StarStatBot from '../startrack.service';
 
 export async function processWeeklyStats(week: number, year: number, explicitModerators?: (ModeratorProfile & { user: User })[]) {
 	const stopwatch = new Stopwatch();
@@ -14,10 +15,60 @@ export async function processWeeklyStats(week: number, year: number, explicitMod
 	const moderators = explicitModerators || (await getModeratorsList());
 	container.logger.info(`[StatsService] [processWeeklyStats] Found ${moderators.length} moderators to process.`);
 
+	const start = getDateFromWeekNumber(week, year, 'start');
+	const end = getDateFromWeekNumber(week, year, 'end');
+
+	const serverID = envParseString('MainServer_ID');
+	const guild = await getGuild(serverID);
+	const modChatChannelIds = await getChannelsInCategory(guild, envParseString('MainServer_ModChatCategoryID'));
+	const modCommandsChannelIds = await getChannelsInCategory(guild, envParseString('MainServer_ModCommandsCategoryID'));
+
+	const modActionCounts = await prisma.modAction.groupBy({
+		by: ['moderatorId'],
+		where: {
+			performedAt: { gte: start, lte: end },
+			action: { in: ['BAN', 'WARN', 'MUTE', 'KICK'] },
+			moderatorId: { in: moderators.map((m) => m.id) }
+		},
+		_count: { _all: true }
+	});
+
+	const modmailCounts = await prisma.modmailThreadClosure.groupBy({
+		by: ['closedByUserId'],
+		where: {
+			closedAt: { gte: start, lte: end },
+			approved: true,
+			closedByUserId: { in: moderators.map((m) => m.id) }
+		},
+		_count: { _all: true }
+	});
+
+	const modActionMap = new Map(modActionCounts.map((item) => [item.moderatorId, item._count._all]));
+	const modmailMap = new Map(modmailCounts.map((item) => [item.closedByUserId, item._count._all]));
+
 	for (const mod of moderators) {
 		container.logger.debug(`[StatsService] [processWeeklyStats] Processing metrics for ${mod.user.username} (${mod.id})...`);
 		try {
-			const metrics = await fetchAllMetrics(mod.id, week, year);
+			const [modChatMessages, publicChatMessages, voiceChatMinutes] = await Promise.all([
+				StarStatBot.fetchModChatMessageCount({ moderatorId: mod.id, week, year, serverID, channelIds: modChatChannelIds }),
+				StarStatBot.fetchPublicChatMessageCount({
+					moderatorId: mod.id,
+					week,
+					year,
+					serverID,
+					channelIds: [...modChatChannelIds, ...modCommandsChannelIds]
+				}),
+				StarStatBot.fetchVoiceMinutes({
+					moderatorId: mod.id,
+					week,
+					year,
+					serverID,
+					channelIds: [...modChatChannelIds, ...modCommandsChannelIds]
+				})
+			]);
+
+			const modActionsTaken = modActionMap.get(mod.id) || 0;
+			const casesHandled = modmailMap.get(mod.id) || 0;
 
 			const upsertedStat = await prisma.weeklyStat.upsert({
 				where: {
@@ -28,11 +79,11 @@ export async function processWeeklyStats(week: number, year: number, explicitMod
 					}
 				},
 				update: {
-					modChatMessages: metrics.modChatMessages,
-					publicChatMessages: metrics.publicChatMessages,
-					voiceChatMinutes: metrics.voiceChatMinutes,
-					modActionsCount: metrics.modActionsTaken,
-					casesHandledCount: metrics.casesHandled,
+					modChatMessages,
+					publicChatMessages,
+					voiceChatMinutes,
+					modActionsCount: modActionsTaken,
+					casesHandledCount: casesHandled,
 					updatedAt: new Date()
 				},
 				create: {
@@ -41,11 +92,11 @@ export async function processWeeklyStats(week: number, year: number, explicitMod
 					},
 					year,
 					week,
-					modChatMessages: metrics.modChatMessages,
-					publicChatMessages: metrics.publicChatMessages,
-					voiceChatMinutes: metrics.voiceChatMinutes,
-					modActionsCount: metrics.modActionsTaken,
-					casesHandledCount: metrics.casesHandled,
+					modChatMessages,
+					publicChatMessages,
+					voiceChatMinutes,
+					modActionsCount: modActionsTaken,
+					casesHandledCount: casesHandled,
 					rawPoints: 0,
 					totalPoints: 0
 				}
@@ -75,23 +126,21 @@ async function isBackfillNeeded(currentWeek: number, currentYear: number): Promi
 
 async function getModeratorsWithActivity(start: Date, end: Date) {
 	const modActionModeratorIds = await prisma.modAction
-		.findMany({
+		.groupBy({
+			by: ['moderatorId'],
 			where: {
 				performedAt: { gte: start, lte: end },
 				moderatorId: { not: null }
-			},
-			select: { moderatorId: true },
-			distinct: ['moderatorId']
+			}
 		})
 		.then((actions) => actions.map((a) => a.moderatorId!));
 
 	const modmailUserIds = await prisma.modmailThreadClosure
-		.findMany({
+		.groupBy({
+			by: ['closedByUserId'],
 			where: {
 				closedAt: { gte: start, lte: end }
-			},
-			select: { closedByUserId: true },
-			distinct: ['closedByUserId']
+			}
 		})
 		.then((closures) => closures.map((c) => c.closedByUserId));
 
