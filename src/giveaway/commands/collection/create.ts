@@ -74,8 +74,10 @@ async function command(interaction: ChatInputCommandInteraction) {
 	const reportingChannel = interaction.options.getChannel('reporting-channel', true) as Channel;
 	const requireAttachments = interaction.options.getBoolean('require-attachments') ?? false;
 
-	if (!interaction.channel?.isSendable()) {
-		return interaction.editReply('The reporting channel must be a text-based channel.');
+	const announcementChannel = (interaction.options.getChannel('announcement-channel') as TextBasedChannel | null) ?? interaction.channel;
+
+	if (!announcementChannel?.isSendable()) {
+		return interaction.editReply('The announcement channel must be a sendable channel.');
 	}
 
 	if (time.offset <= 0) {
@@ -87,7 +89,7 @@ async function command(interaction: ChatInputCommandInteraction) {
 		requiresAttachment: requireAttachments
 	});
 
-	const msg = await interaction.channel!.send(
+	const msg = await announcementChannel.send(
 		`Fetched ${winners.length} winner(s) for the giveaway collection "${name}". Preparing announcement...`
 	);
 
@@ -147,6 +149,9 @@ export default {
 		.addStringOption((option) => option.setName('prize').setDescription('The prize for the collection').setRequired(true))
 		.addChannelOption((option) =>
 			option.setName('reporting-channel').setDescription('The channel to send collection reports to').setRequired(true)
+		)
+		.addChannelOption((option) =>
+			option.setName('announcement-channel').setDescription('The channel to announce the collection in').setRequired(false)
 		)
 		.addBooleanOption((option) =>
 			option.setName('require-attachments').setDescription('Whether submissions must include attachments').setRequired(false)
