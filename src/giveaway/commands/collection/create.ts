@@ -37,11 +37,12 @@ async function fetchWinners(
 	options: {
 		numberOfWinners: number;
 		requiresAttachment: boolean;
+		exceptions?: string[];
 	}
 ) {
 	const messages = await fetchAllMessages(channel);
 
-	let filteredMessages = messages.slice().filter((msg) => msg.author.bot === false);
+	let filteredMessages = messages.slice().filter((msg) => msg.author.bot === false && options.exceptions?.includes(msg.author.id) === false);
 	filteredMessages = filteredMessages.filter((msg) => (options.requiresAttachment ? msg.attachments.size > 0 : true));
 
 	const authors = new Set(filteredMessages.map((msg) => msg.author.id));
@@ -86,7 +87,8 @@ async function command(interaction: ChatInputCommandInteraction) {
 
 	const winners = await fetchWinners(interaction.channel!, {
 		numberOfWinners: maxWinners,
-		requiresAttachment: requireAttachments
+		requiresAttachment: requireAttachments,
+		exceptions: interaction.options.getUser('exceptions') ? [interaction.options.getUser('exceptions')!.id] : []
 	});
 
 	const msg = await announcementChannel.send(
@@ -156,4 +158,5 @@ export default {
 		.addBooleanOption((option) =>
 			option.setName('require-attachments').setDescription('Whether submissions must include attachments').setRequired(false)
 		)
+		.addUserOption((option) => option.setName('exceptions').setDescription('Users to exclude from winning').setRequired(false))
 } as pluginCommand;
