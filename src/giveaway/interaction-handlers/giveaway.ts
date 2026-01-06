@@ -29,7 +29,6 @@ export class ButtonHandler extends InteractionHandler {
 				flags: ['Ephemeral']
 			});
 
-		// TODO: Add image of UID copy instructions
 		const instructionsEmbed = new EmbedBuilder()
 			.setColor('Orange')
 			.setDescription(
@@ -41,6 +40,7 @@ export class ButtonHandler extends InteractionHandler {
 					`4. Submit your UID and please wait up to 14 business days after the collection deadline for the prize to be delivered via in-game mail.\n\n` +
 					`If you have any questions or need further assistance, feel free to reach out to the moderation team. <:NovaALO:1266394121124188271>`
 			)
+			.setImage('https://i.imgur.com/SnWIBVd.png')
 			.setFooter({ text: 'Strinova Navigator Giveaway System' })
 			.setTimestamp();
 
