@@ -130,3 +130,29 @@ model ModmailThreadClosure {
     closedAt          DateTime
     createdAt         DateTime @default(now())
 }
+
+model GiveawayCollection {
+    id                 String           @id @default(uuid())
+    messageId          String           @unique
+    channelId          String
+    guildId            String
+    maxWinners         Int
+    name               String
+    prize              String
+    endTime            DateTime
+    reportingChannelId String
+    createdAt          DateTime         @default(now())
+    endedAt            DateTime?
+    giveawayWinners    GiveawayWinner[]
+}
+
+model GiveawayWinner {
+    id            String             @id @default(uuid())
+    collectionId  String
+    collection    GiveawayCollection @relation(fields: [collectionId], references: [id])
+    userId        String?
+    discordUserId String
+    claimed       Boolean            @default(false)
+    createdAt     DateTime           @default(now())
+    claimedAt     DateTime?
+}

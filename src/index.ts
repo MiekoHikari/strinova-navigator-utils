@@ -28,7 +28,7 @@ const client = new StrinovaSapphireClient(
 			}
 		}
 	},
-	['_core', 'stardust']
+	['_core', 'stardust', 'giveaway']
 );
 
 const main = async () => {

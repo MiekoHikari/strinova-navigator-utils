@@ -8,7 +8,7 @@ async function command(interaction: ChatInputCommandInteraction) {
 	const moderators = await getModeratorsList();
 	if (moderators.length === 0) return interaction.editReply({ content: 'No active enrolled moderators.' });
 
-	const members = moderators.map((mod) => `\`\`\`Username: ${mod.user.username}\n Enrolled At: ${mod.enrolledAt}\n User ID: ${mod.userId}\`\`\``);
+	const members = moderators.map((mod) => `\`\`\`Username: ${mod.user.username}\n Enrolled At: ${mod.enrolledAt}\n User ID: ${mod.id}\`\`\``);
 
 	return interaction.editReply({ content: `**Active Enrolled Moderators (${moderators.length}):**\n\n${members.join('\n')}` });
 }
