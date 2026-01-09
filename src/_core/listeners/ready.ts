@@ -9,9 +9,19 @@ const dev = process.env.NODE_ENV !== 'production';
 export class UserEvent extends Listener {
 	private readonly style = dev ? yellow : blue;
 
-	public override run() {
+	public override async run() {
 		this.printBanner();
 		this.printStoreDebugInformation();
+
+		const pendingJobs = await this.container.tasks.list({
+			types: ['active', 'delayed', 'waiting']
+		});
+
+		for (const job of pendingJobs) {
+			// job.name is the task name (e.g. 'endGiveaway')
+			// job.data is the payload (e.g. { giveaway: '123' })
+			this.container.logger.debug(`Job ${job.id}: ${job.name}`, job.data);
+		}
 	}
 
 	private printBanner() {
