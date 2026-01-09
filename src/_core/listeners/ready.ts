@@ -14,7 +14,7 @@ export class UserEvent extends Listener {
 		this.printStoreDebugInformation();
 
 		const pendingJobs = await this.container.tasks.list({
-			types: ['active', 'delayed', 'waiting']
+			types: ['active', 'delayed', 'waiting', 'completed', 'failed']
 		});
 
 		for (const job of pendingJobs) {
